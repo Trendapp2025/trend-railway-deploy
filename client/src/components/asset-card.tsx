@@ -33,7 +33,7 @@ export default function AssetCard({ asset }: AssetCardProps) {
       case "forex":
         return <DollarSign className="h-5 w-5 text-green-500" />;
       default:
-        return <TrendingUp className="h-5 w-5 text-gray-500" />;
+        return <TrendingUp className="h-5 w-5 text-muted-foreground" />;
     }
   };
 
@@ -51,17 +51,17 @@ export default function AssetCard({ asset }: AssetCardProps) {
   };
 
   const getPriceChangeIndicator = () => {
-    if (!priceHistory || priceHistory.length < 2) return <Minus className="h-4 w-4 text-gray-400" />;
+    if (!priceHistory || priceHistory.length < 2) return <Minus className="h-4 w-4 text-muted-foreground" />;
     
     const currentPrice = priceHistory[0]?.price;
     const previousPrice = priceHistory[priceHistory.length - 1]?.price;
     
-    if (!currentPrice || !previousPrice) return <Minus className="h-4 w-4 text-gray-400" />;
+    if (!currentPrice || !previousPrice) return <Minus className="h-4 w-4 text-muted-foreground" />;
     
     const change = currentPrice - previousPrice;
     if (change > 0) return <TrendingUp className="h-4 w-4 text-green-500" />;
     if (change < 0) return <TrendingDown className="h-4 w-4 text-red-500" />;
-    return <Minus className="h-4 w-4 text-gray-400" />;
+    return <Minus className="h-4 w-4 text-muted-foreground" />;
   };
 
   const formatPrice = (price: number) => {
@@ -133,7 +133,7 @@ export default function AssetCard({ asset }: AssetCardProps) {
         {/* Asset Status */}
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center">
-            <div className={`h-3 w-3 rounded-full mr-2 ${asset.isActive ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+            <div className={`h-3 w-3 rounded-full mr-2 ${asset.isActive ? 'bg-green-500' : 'bg-muted-foreground'}`}></div>
             <span className="text-sm font-medium">
               {asset.isActive ? "Active" : "Inactive"}
             </span>

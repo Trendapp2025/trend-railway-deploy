@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useLanguage } from "@/hooks/use-language";
 import { Button } from "@/components/ui/button";
+import { useEffect } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageSelectorButton } from "@/components/language-selector";
@@ -27,6 +28,17 @@ import { Link } from "wouter";
 export default function AppHeader() {
   const { user, logoutMutation } = useAuth();
   const { t } = useLanguage();
+
+  // Debug: Log user info to see what's happening
+  useEffect(() => {
+    if (user) {
+      console.log('AppHeader: User loaded:', {
+        username: user.username,
+        email: user.email,
+        id: user.id
+      });
+    }
+  }, [user]);
 
   const handleLogout = () => {
     logoutMutation.mutate();

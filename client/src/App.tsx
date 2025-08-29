@@ -40,7 +40,7 @@ function ErrorFallback({ error, resetErrorBoundary }: { error: Error; resetError
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
+          <div className="text-sm text-muted-foreground bg-muted p-3 rounded">
             <strong>Error:</strong> {error.message}
           </div>
           <div className="flex gap-2">
@@ -78,9 +78,9 @@ function LoadingFallback() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            <div className="h-2 bg-gray-200 rounded animate-pulse"></div>
-            <div className="h-2 bg-gray-200 rounded animate-pulse w-3/4"></div>
-            <div className="h-2 bg-gray-200 rounded animate-pulse w-1/2"></div>
+            <div className="h-2 bg-muted rounded animate-pulse"></div>
+            <div className="h-2 bg-muted rounded animate-pulse w-3/4"></div>
+            <div className="h-2 bg-muted rounded animate-pulse w-1/2"></div>
           </div>
         </CardContent>
       </Card>

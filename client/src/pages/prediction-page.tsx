@@ -49,8 +49,8 @@ export default function PredictionPage() {
         <AppHeader />
         <main className="container max-w-6xl mx-auto px-4 py-6">
           <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-            <div className="h-64 bg-gray-200 rounded"></div>
+            <div className="h-8 bg-muted rounded w-1/3"></div>
+            <div className="h-64 bg-muted rounded"></div>
           </div>
         </main>
       </div>
@@ -62,9 +62,9 @@ export default function PredictionPage() {
       <div className="min-h-screen bg-background">
         <AppHeader />
         <main className="container max-w-6xl mx-auto px-4 py-6">
-          <Card className="border-red-200 bg-red-50">
+          <Card className="border-red-500/20 bg-red-500/10">
             <CardContent className="pt-6">
-              <p className="text-red-600 text-center">Asset not found</p>
+              <p className="text-red-400 text-center">Asset not found</p>
             </CardContent>
           </Card>
         </main>

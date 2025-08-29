@@ -164,18 +164,18 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
 
   const getDurationColor = (duration: string): string => {
     const colors: Record<string, string> = {
-      '1h': 'bg-blue-100 text-blue-800',
-      '3h': 'bg-green-100 text-green-800',
-      '6h': 'bg-yellow-100 text-yellow-800',
-      '24h': 'bg-purple-100 text-purple-800',
-      '48h': 'bg-indigo-100 text-indigo-800',
-      '1w': 'bg-pink-100 text-pink-800',
-      '1m': 'bg-red-100 text-red-800',
-      '3m': 'bg-orange-100 text-orange-800',
-      '6m': 'bg-teal-100 text-teal-800',
-      '1y': 'bg-gray-100 text-gray-800'
+      '1h': 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
+      '3h': 'bg-green-500/20 text-green-300 border border-green-500/30',
+      '6h': 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30',
+      '24h': 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
+      '48h': 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30',
+      '1w': 'bg-pink-500/20 text-pink-300 border border-pink-500/30',
+      '1m': 'bg-red-500/20 text-red-300 border border-red-500/30',
+      '3m': 'bg-orange-500/20 text-orange-300 border border-orange-500/30',
+      '6m': 'bg-teal-500/20 text-teal-300 border border-teal-500/30',
+      '1y': 'bg-gray-500/20 text-gray-300 border border-gray-500/30'
     };
-    return colors[duration] || 'bg-gray-100 text-gray-800';
+    return colors[duration] || 'bg-gray-500/20 text-gray-300 border border-gray-500/30';
   };
 
   if (isLoading) {
@@ -184,10 +184,10 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
         {[...Array(5)].map((_, i) => (
           <Card key={i} className="animate-pulse">
             <CardHeader>
-              <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+              <div className="h-4 bg-muted rounded w-1/3"></div>
             </CardHeader>
             <CardContent>
-              <div className="h-20 bg-gray-200 rounded"></div>
+              <div className="h-20 bg-muted rounded"></div>
             </CardContent>
           </Card>
         ))}
@@ -220,10 +220,10 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
   return (
     <div className="space-y-4">
       {/* Duration Explanation */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+      <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-4">
         <div className="flex items-start space-x-2">
-          <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-          <div className="text-sm text-blue-800">
+          <Info className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
+          <div className="text-sm text-blue-300">
             <p className="font-medium">How it works:</p>
             <p>Each slot represents a {getDurationLabel(duration).toLowerCase()} time window. The slot is divided into smaller intervals where you can earn points based on your prediction accuracy.</p>
             <p className="mt-1 text-xs">For example, a 1-hour slot might have 4 intervals of 15 minutes each, while a 1-day slot might have 24 intervals of 1 hour each.</p>
@@ -430,7 +430,7 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
         </div>
         
         {/* Scroll indicator */}
-        <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none"></div>
+        <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none"></div>
       </div>
     </div>
   );

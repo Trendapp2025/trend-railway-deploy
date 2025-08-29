@@ -30,6 +30,7 @@ type AuthContextType = {
   verifyEmailMutation: UseMutationResult<{ message: string }, Error, { token: string }>;
   requestPasswordResetMutation: UseMutationResult<{ message: string }, Error, { email: string }>;
   resetPasswordMutation: UseMutationResult<{ message: string }, Error, ResetPasswordData>;
+  refreshUserProfile: () => Promise<void>;
 };
 
 type LoginData = {
@@ -61,22 +62,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   // Listen to Firebase authentication state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChange((firebaseUser) => {
+    const unsubscribe = onAuthStateChange(async (firebaseUser) => {
       setIsLoading(true);
       
       if (firebaseUser) {
         // User is signed in
-        const userData: User = {
-          id: firebaseUser.uid,
-          username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-          email: firebaseUser.email!,
-          emailVerified: firebaseUser.emailVerified,
-          role: 'user' as const,
-        };
-        
-        setUser(userData);
-        setProfile(null); // You can create a profile later if needed
-        setError(null);
+        try {
+          // First set basic Firebase user data
+          const userData: User = {
+            id: firebaseUser.uid,
+            username: 'Loading...', // Don't set username from Firebase initially
+            email: firebaseUser.email!,
+            emailVerified: firebaseUser.emailVerified,
+            role: 'user' as const,
+          };
+          
+          setUser(userData);
+          
+          // Fetch user profile from backend to get the correct username
+          try {
+            console.log('Fetching user profile from backend...');
+            console.log('Firebase UID:', firebaseUser.uid);
+            console.log('Firebase email:', firebaseUser.email);
+            
+            // Use the new endpoint that gets profile by email (no auth required)
+            const response = await fetch(`/api/user/profile/email/${encodeURIComponent(firebaseUser.email!)}`);
+            
+            console.log('Profile response status:', response.status);
+            console.log('Profile response headers:', response.headers);
+            
+            if (response.ok) {
+              const profileData = await response.json();
+              console.log('Profile data received:', profileData);
+              // Update user with correct username from backend
+              const updatedUser = {
+                ...userData,
+                username: profileData.username || 'Unknown User',
+                role: profileData.role || userData.role,
+              };
+              console.log('Updating user with:', updatedUser);
+              setUser(updatedUser);
+              setProfile(profileData);
+            } else {
+              console.warn('Profile response not ok:', response.status, response.statusText);
+              const errorText = await response.text();
+              console.warn('Profile error response:', errorText);
+              // Set a fallback username if profile fetch fails
+              setUser({
+                ...userData,
+                username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+              });
+            }
+          } catch (profileError) {
+            console.warn('Failed to fetch user profile:', profileError);
+            // Set a fallback username if profile fetch fails
+            setUser({
+              ...userData,
+              username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+            });
+          }
+          
+          setError(null);
+        } catch (error) {
+          console.error('Error setting up user:', error);
+          setError(error as Error);
+        }
       } else {
         // User is signed out
         setUser(null);
@@ -87,9 +137,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
     });
     
-          // Cleanup subscription on unmount
-      return () => unsubscribe();
-    }, []);
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
+  }, []);
+
+  // Refresh profile when user changes to ensure username is always up to date
+  useEffect(() => {
+    if (user && !profile) {
+      // Fetch user profile from backend to get the correct username
+      const fetchProfile = async () => {
+        try {
+          // Use the new endpoint that gets profile by email (no auth required)
+          const response = await fetch(`/api/user/profile/email/${encodeURIComponent(auth.currentUser?.email || '')}`);
+          
+          if (response.ok) {
+            const profileData = await response.json();
+            setUser({
+              ...user,
+              username: profileData.username || user.username,
+              role: profileData.role || user.role,
+            });
+            setProfile(profileData);
+          }
+        } catch (error) {
+          console.warn('Failed to fetch user profile:', error);
+        }
+      };
+      
+      fetchProfile();
+    }
+  }, [user, profile]);
     
 
 
@@ -241,6 +318,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  // Function to refresh user profile
+  const refreshUserProfile = async () => {
+    if (user) {
+      try {
+        // Use the new endpoint that gets profile by email (no auth required)
+        const response = await fetch(`/api/user/profile/email/${encodeURIComponent(auth.currentUser?.email || '')}`);
+        
+        if (response.ok) {
+          const profileData = await response.json();
+          setUser({
+            ...user,
+            username: profileData.username || user.username,
+            role: profileData.role || user.role,
+          });
+          setProfile(profileData);
+        }
+      } catch (error) {
+        console.warn('Failed to refresh user profile:', error);
+      }
+    }
+  };
+
   const logoutMutation = useMutation({
     mutationFn: async () => {
       try {
@@ -282,6 +381,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         verifyEmailMutation,
         requestPasswordResetMutation,
         resetPasswordMutation,
+        refreshUserProfile,
       }}
     >
       {children}

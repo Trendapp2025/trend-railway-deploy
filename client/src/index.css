@@ -5,7 +5,7 @@
 /* Custom scrollbar styles for horizontal scrolling */
 .scrollbar-thin {
   scrollbar-width: thin;
-  scrollbar-color: #d1d5db #f3f4f6;
+  scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted));
 }
 
 .scrollbar-thin::-webkit-scrollbar {
@@ -13,17 +13,17 @@
 }
 
 .scrollbar-thin::-webkit-scrollbar-track {
-  background: #f3f4f6;
+  background: hsl(var(--muted));
   border-radius: 3px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: hsl(var(--muted-foreground));
   border-radius: 3px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: hsl(var(--foreground));
 }
 
 /* Smooth scrolling for horizontal scroll */

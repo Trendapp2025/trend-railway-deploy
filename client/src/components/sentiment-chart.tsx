@@ -131,7 +131,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
     if (active && payload && payload.length) {
       const data = payload[0];
       return (
-        <div className="bg-white p-3 border rounded-lg shadow-lg">
+        <div className="bg-popover p-3 border rounded-lg shadow-lg">
           <p className="font-semibold">{data.name}</p>
           <p className="text-sm">
             {data.value} users ({data.payload.percentage}%)
@@ -152,7 +152,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-8 text-muted-foreground">
             Please log in to view sentiment data
           </div>
         </CardContent>
@@ -170,7 +170,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-8 text-muted-foreground">
             Please verify your email to view sentiment data
           </div>
         </CardContent>
@@ -187,7 +187,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
         <CardContent>
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-            <p className="mt-2 text-gray-500">Loading sentiment data...</p>
+            <p className="mt-2 text-muted-foreground">Loading sentiment data...</p>
           </div>
         </CardContent>
       </Card>
@@ -229,9 +229,9 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
           <CardTitle>Market Sentiment</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-8 text-muted-foreground">
             <div className="mb-2">
-              <BarChart3 className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+              <BarChart3 className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
             </div>
             <p className="font-medium">No sentiment data available</p>
             <p className="text-sm mt-1">No predictions have been made for {assetSymbol} in the {duration} timeframe yet.</p>
@@ -336,7 +336,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
             </div>
 
             {/* Overall progress bar */}
-            <div className="w-full bg-gray-200 rounded-full h-3">
+            <div className="w-full bg-muted rounded-full h-3">
               <div 
                 className="bg-green-500 h-3 rounded-full transition-all duration-300"
                 style={{ width: `${upPercentage}%` }}
@@ -368,7 +368,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
               
               {/* Center text */}
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <div className="text-2xl font-bold text-gray-800">
+                <div className="text-2xl font-bold text-foreground">
                   {upPercentage}%
                 </div>
                 <div className="text-sm font-semibold text-green-600">
@@ -398,19 +398,19 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
               <div className="text-lg font-semibold text-green-600">
                 {totalUp}
               </div>
-              <div className="text-xs text-gray-600">Up Predictions</div>
+              <div className="text-xs text-muted-foreground">Up Predictions</div>
             </div>
             <div>
               <div className="text-lg font-semibold text-red-600">
                 {totalDown}
               </div>
-              <div className="text-xs text-gray-600">Down Predictions</div>
+              <div className="text-xs text-muted-foreground">Down Predictions</div>
             </div>
             <div>
               <div className="text-lg font-semibold text-blue-600">
                 {totalPredictions}
               </div>
-              <div className="text-xs text-gray-600">Total Predictions</div>
+              <div className="text-xs text-muted-foreground">Total Predictions</div>
             </div>
           </div>
           <div className="text-xs text-muted-foreground text-center mt-2">

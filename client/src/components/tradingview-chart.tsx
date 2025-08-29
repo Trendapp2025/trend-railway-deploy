@@ -7,6 +7,7 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Button } from './ui/button';
 import { Search, RefreshCw, AlertCircle } from 'lucide-react';
+import { useTheme } from 'next-themes';
 
 interface TradingViewChartProps {
   className?: string;
@@ -49,6 +50,7 @@ export default function TradingViewChart({
   const [timeframe, setTimeframe] = useState('60'); // Default to 1h
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { theme } = useTheme();
 
   // Initialize TradingView widget
   const initWidget = () => {
@@ -86,10 +88,10 @@ export default function TradingViewChart({
         interval: timeframe,
         container_id: containerId,
         autosize: true,
-        theme: 'light',
+        theme: theme === 'dark' ? 'dark' : 'light',
         style: '1',
         locale: 'en',
-        toolbar_bg: '#f1f3f6',
+        toolbar_bg: theme === 'dark' ? '#1a1a1a' : '#f1f3f6',
         enable_publishing: false,
         allow_symbol_change: true,
         width: '100%',
@@ -192,6 +194,14 @@ export default function TradingViewChart({
       }
     }
   }, [symbol, timeframe]);
+
+  // Reinitialize chart when theme changes
+  useEffect(() => {
+    if (window.TradingView && chartContainerRef.current) {
+      console.log('Theme changed, reinitializing chart...');
+      initWidget();
+    }
+  }, [theme]);
 
   // Handle symbol input change
   const handleSymbolChange = (newSymbol: string) => {
@@ -328,17 +338,17 @@ export default function TradingViewChart({
         {/* Chart Container */}
         <div className="relative">
           {error && (
-            <div className="absolute inset-0 flex items-center justify-center bg-red-50 border border-red-200 rounded-lg z-10">
+            <div className="absolute inset-0 flex items-center justify-center bg-red-500/10 border border-red-500/20 rounded-lg z-10">
               <div className="text-center p-6">
                 <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-                <p className="text-red-600 font-medium text-lg mb-2">Chart Error</p>
-                <p className="text-red-500 text-sm mb-4">{error}</p>
+                <p className="text-red-400 font-medium text-lg mb-2">Chart Error</p>
+                <p className="text-red-400 text-sm mb-4">{error}</p>
                 <div className="flex gap-2 justify-center">
                   <Button 
                     variant="outline" 
                     size="sm" 
                     onClick={handleRetry}
-                    className="border-red-300 text-red-600 hover:bg-red-50"
+                    className="border-red-500/30 text-red-400 hover:bg-red-500/10"
                   >
                     Retry
                   </Button>
@@ -354,21 +364,21 @@ export default function TradingViewChart({
             </div>
           )}
 
-          {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 border border-gray-200 rounded-lg z-10">
-              <div className="text-center">
-                <RefreshCw className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">Loading chart...</p>
-                <p className="text-xs text-gray-500 mt-1">This may take a few seconds</p>
+                      {isLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-muted border border-border rounded-lg z-10">
+                <div className="text-center">
+                  <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-2" />
+                  <p className="text-foreground">Loading chart...</p>
+                  <p className="text-xs text-muted-foreground mt-1">This may take a few seconds</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div
-            ref={chartContainerRef}
-            className="w-full border border-gray-200 rounded-lg overflow-hidden"
-            style={{ height: `${height}px` }}
-          />
+                      <div
+              ref={chartContainerRef}
+              className="w-full border border-border rounded-lg overflow-hidden"
+              style={{ height: `${height}px` }}
+            />
         </div>
 
         {/* Chart Info */}
@@ -379,7 +389,7 @@ export default function TradingViewChart({
             <li>• <strong>Forex:</strong> OANDA:EURUSD, FXCM:GBPUSD, FX_IDC:USDJPY</li>
             <li>• <strong>Crypto:</strong> BINANCE:BTCUSDT, COINBASE:ETHUSD, KRAKEN:ADAUSD</li>
           </ul>
-          <p className="mt-2 text-yellow-600">
+          <p className="mt-2 text-yellow-500">
             ⚠️ Note: Stock data may be delayed without exchange subscriptions. For real-time data, consider upgrading to Charting Library with custom datafeed.
           </p>
         </div>

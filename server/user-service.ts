@@ -82,8 +82,9 @@ export async function getUserProfile(userId: string, viewerId?: string): Promise
     isFollowing = !!follow;
   }
 
-  // Get user badges
-  const badges = await getUserBadges(userId);
+  // Get user badges - temporarily disabled due to schema mismatch
+  // const badges = await getUserBadges(userId);
+  const badges: any[] = []; // Empty array for now
 
   return {
     id: user.id,

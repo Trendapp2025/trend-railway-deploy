@@ -318,7 +318,7 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
             {(() => {
               console.log('Rendering selected slot info:', selectedSlot);
               return selectedSlot && (
-              <Card className="bg-muted/50">
+              <Card className="bg-muted/30 border-muted">
                 <CardContent className="pt-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium">Selected Slot</span>

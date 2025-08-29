@@ -42,12 +42,7 @@ export default function HomePage() {
 
 
 
-  // Calculate overall statistics
-  const totalAssets = assets?.length || 0;
-  const activeAssets = assets?.filter(asset => asset.isActive).length || 0;
-  const cryptoCount = cryptoAssets.length;
-  const stocksCount = stockAssets.length;
-  const forexCount = forexAssets.length;
+
 
   
   return (
@@ -58,7 +53,12 @@ export default function HomePage() {
           <div className="flex justify-between items-start">
             <div>
               <h1 className="text-3xl font-bold tracking-tight mb-2">
-                {user ? t("home.welcome_user", {username: user.username}) : t("home.welcome")}
+                {user ? (
+                  <>
+                    {console.log('Home page user:', user)}
+                    {t("home.welcome_user", {username: user.username})}
+                  </>
+                ) : t("home.welcome")}
               </h1>
               <p className="text-muted-foreground">
                 {t("home.subtitle")}
@@ -111,37 +111,37 @@ export default function HomePage() {
 
         {/* Advanced Charts Section */}
         <section className="mb-8">
-          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+          <Card>
             <CardHeader>
-              <CardTitle className="flex items-center text-blue-900">
-                <BarChart3 className="h-6 w-6 mr-3" />
+              <CardTitle className="flex items-center">
+                <BarChart3 className="h-6 w-6 mr-3 text-primary" />
                 Advanced Trading Charts
               </CardTitle>
-              <CardDescription className="text-blue-700">
+              <CardDescription>
                 Professional charts for stocks, forex, and crypto with multiple timeframes
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
-                    <div className="text-2xl font-bold text-blue-600 mb-2">📈</div>
-                    <h3 className="font-semibold text-blue-900 mb-2">Stocks</h3>
-                    <p className="text-sm text-blue-700">NASDAQ, NYSE, TSX</p>
+                  <div className="text-center p-4 bg-muted/50 rounded-lg border">
+                    <div className="text-2xl font-bold text-primary mb-2">📈</div>
+                    <h3 className="font-semibold mb-2">Stocks</h3>
+                    <p className="text-sm text-muted-foreground">NASDAQ, NYSE, TSX</p>
                   </div>
-                  <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
-                    <div className="text-2xl font-bold text-blue-600 mb-2">💱</div>
-                    <h3 className="font-semibold text-blue-900 mb-2">Forex</h3>
-                    <p className="text-sm text-blue-700">OANDA, FXCM, FX_IDC</p>
+                  <div className="text-center p-4 bg-muted/50 rounded-lg border">
+                    <div className="text-2xl font-bold text-primary mb-2">💱</div>
+                    <h3 className="font-semibold mb-2">Forex</h3>
+                    <p className="text-sm text-muted-foreground">OANDA, FXCM, FX_IDC</p>
                   </div>
-                  <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
-                    <div className="text-2xl font-bold text-blue-600 mb-2">₿</div>
-                    <h3 className="font-semibold text-blue-900 mb-2">Crypto</h3>
-                    <p className="text-sm text-blue-700">Binance, Coinbase, Kraken</p>
+                  <div className="text-center p-4 bg-muted/50 rounded-lg border">
+                    <div className="text-2xl font-bold text-primary mb-2">₿</div>
+                    <h3 className="font-semibold mb-2">Crypto</h3>
+                    <p className="text-sm text-muted-foreground">Binance, Coinbase, Kraken</p>
                   </div>
                 </div>
                 <div className="text-center">
-                  <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700">
+                  <Button asChild size="lg">
                     <Link href="/chart">
                       <BarChart3 className="h-5 w-5 mr-2" />
                       Open Advanced Charts
@@ -153,67 +153,7 @@ export default function HomePage() {
           </Card>
         </section>
 
-        {/* Asset Statistics */}
-        <div className="mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Assets</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalAssets}</div>
-                <p className="text-xs text-muted-foreground">
-                  {activeAssets} active
-                </p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  <Coins className="h-4 w-4 text-yellow-500" />
-                  Cryptocurrencies
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{cryptoCount}</div>
-                <p className="text-xs text-muted-foreground">
-                  {cryptoAssets.filter(asset => asset.isActive).length} active
-                </p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  <LineChart className="h-4 w-4 text-blue-500" />
-                  Stocks
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stocksCount}</div>
-                <p className="text-xs text-muted-foreground">
-                  {stockAssets.filter(asset => asset.isActive).length} active
-                </p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-green-500" />
-                  Forex Pairs
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{forexCount}</div>
-                <p className="text-xs text-muted-foreground">
-                  {forexAssets.filter(asset => asset.isActive).length} active
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+
 
         {/* Current Month Progress */}
         <section className="mb-8">

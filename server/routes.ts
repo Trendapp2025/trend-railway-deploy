@@ -623,6 +623,32 @@ router.get('/user/profile', authMiddleware, async (req, res) => {
   }
 });
 
+// Get user profile by email (for Firebase authentication)
+router.get('/user/profile/email/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    // Find user by email
+    const user = await db.query.users.findFirst({
+      where: eq(users.email, email),
+    });
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Get full profile
+    const profile = await getUserProfile(user.id, user.id);
+    if (!profile) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+    
+    res.json(profile);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to get profile' });
+  }
+});
+
 // Update user profile
 router.put('/user/profile', authMiddleware, async (req, res) => {
   try {
