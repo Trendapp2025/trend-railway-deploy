@@ -283,6 +283,7 @@ async function awardBadge(
 
 // Get user's badges
 export async function getUserBadges(userId: string): Promise<Array<{
+  id: string;
   badgeType: string;
   badgeName: string;
   badgeDescription: string;
@@ -299,6 +300,7 @@ export async function getUserBadges(userId: string): Promise<Array<{
     });
 
     return badges.map(badge => ({
+      id: badge.id,
       badgeType: badge.badgeType,
       badgeName: badge.badgeName,
       badgeDescription: badge.badgeDescription,

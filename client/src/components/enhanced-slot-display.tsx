@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Clock, Lock, Unlock, TrendingUp, TrendingDown } from 'lucide-react';
+import { Clock, Lock, Unlock, TrendingUp, TrendingDown, Info, ChevronDown, ChevronRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useLanguage } from '../hooks/use-language';
 
@@ -43,6 +43,7 @@ interface EnhancedSlotDisplayProps {
 export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: EnhancedSlotDisplayProps) {
   const { t } = useLanguage();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [expandedSlots, setExpandedSlots] = useState<Set<number>>(new Set());
 
   // Update current time every second for live countdowns
   useEffect(() => {
@@ -65,6 +66,18 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
     },
     refetchInterval: 30000, // Refresh every 30 seconds
   });
+
+  const toggleSlotExpansion = (slotNumber: number) => {
+    setExpandedSlots(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(slotNumber)) {
+        newSet.delete(slotNumber);
+      } else {
+        newSet.add(slotNumber);
+      }
+      return newSet;
+    });
+  };
 
   const formatTimeRemaining = (milliseconds: number): string => {
     try {
@@ -206,6 +219,18 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
 
   return (
     <div className="space-y-4">
+      {/* Duration Explanation */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+        <div className="flex items-start space-x-2">
+          <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div className="text-sm text-blue-800">
+            <p className="font-medium">How it works:</p>
+            <p>Each slot represents a {getDurationLabel(duration).toLowerCase()} time window. The slot is divided into smaller intervals where you can earn points based on your prediction accuracy.</p>
+            <p className="mt-1 text-xs">For example, a 1-hour slot might have 4 intervals of 15 minutes each, while a 1-day slot might have 24 intervals of 1 hour each.</p>
+          </div>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Available Slots</h3>
         <Badge className={getDurationColor(duration)}>
@@ -213,180 +238,200 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
         </Badge>
       </div>
 
-      {(() => {
-        console.log('All slots before filtering:', slots);
-        const validSlots = slots.filter(slot => {
-          const isValid = slot.start && slot.end && slot.slotNumber !== undefined;
-          if (!isValid) {
-            console.warn('Invalid slot filtered out:', slot);
-          }
-          return isValid;
-        });
-        console.log('Valid slots after filtering:', validSlots);
-        return validSlots.map((slot) => {
-        const isSelected = selectedSlot?.slotNumber === slot.slotNumber;
-        console.log('Slot selection check:', {
-          slotNumber: slot.slotNumber,
-          selectedSlotNumber: selectedSlot?.slotNumber,
-          isSelected
-        });
-        const isLocked = !slot.timeRemaining || slot.timeRemaining <= 0 || (slot.timeRemaining <= 300000); // 5 minutes before start
-        console.log('Slot lock status:', {
-          slotNumber: slot.slotNumber,
-          timeRemaining: slot.timeRemaining,
-          isLocked
-        });
+            {/* Horizontal Scrollable Slots */}
+      <div className="relative">
+        {/* Scroll hint */}
+        <div className="text-xs text-muted-foreground mb-2 flex items-center justify-center">
+          <span>← Scroll to see all available slots →</span>
+        </div>
         
-        return (
-          <Card 
-            key={slot.slotNumber ?? 'unknown'} 
-            className={`transition-all duration-200 ${
-              isSelected 
-                ? 'ring-2 ring-primary border-primary' 
-                : 'hover:shadow-md'
-            } ${isLocked ? 'opacity-75' : ''}`}
-          >
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <CardTitle className="text-base">
-                    Slot {slot.slotNumber ?? 'Unknown'}
-                  </CardTitle>
-                  <Badge variant={(slot.isActive ?? false) ? "default" : "secondary"}>
-                    {(slot.isActive ?? false) ? "Active" : "Upcoming"}
-                  </Badge>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  {isLocked ? (
-                    <Badge variant="destructive" className="flex items-center space-x-1">
-                      <Lock className="h-3 w-3" />
-                      <span>Locked</span>
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="flex items-center space-x-1">
-                      <Unlock className="h-3 w-3" />
-                      <span>Open</span>
-                    </Badge>
-                  )}
-                  
-                  <div className="text-sm text-muted-foreground">
-                    {slot.pointsIfCorrect || 0} pts
-                  </div>
-                </div>
-              </div>
-            </CardHeader>
-
-            <CardContent className="space-y-4">
-              {/* Slot Time Window */}
-              <div className="bg-muted p-3 rounded-lg">
-                <div className="flex items-center justify-between text-sm">
-                  <div className="flex items-center space-x-2">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">Time Window (CEST)</span>
-                  </div>
-                  <span className="text-muted-foreground">
-                    {(() => {
-                      console.log('Formatting start date:', slot.start, typeof slot.start);
-                      console.log('Formatting end date:', slot.end, typeof slot.end);
-                      return `${formatCESTTime(slot.start)} - ${formatCESTTime(slot.end)}`;
-                    })()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Live Countdown */}
-              {slot.timeRemaining && slot.timeRemaining > 0 && (
-                <div className="bg-primary/10 p-3 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">
-                      {(slot.isActive ?? false) ? "Ends in:" : "Starts in:"}
-                    </span>
-                    <span className="text-lg font-mono font-bold text-primary">
-                      {(() => {
-                        try {
-                          if (typeof slot.timeRemaining !== 'number' || isNaN(slot.timeRemaining)) {
-                            console.warn('Invalid timeRemaining:', slot.timeRemaining);
-                            return 'Invalid Time';
-                          }
-                          return formatTimeRemaining(slot.timeRemaining);
-                        } catch (error) {
-                          console.error('Error formatting time remaining:', error);
-                          return 'Error';
-                        }
-                      })()}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Partitioned Intervals */}
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium text-muted-foreground">
-                  Intervals & Points
-                </h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {(() => {
-                    console.log('Slot intervals:', {
-                      slotNumber: slot.slotNumber,
-                      intervals: slot.intervals,
-                      isArray: Array.isArray(slot.intervals)
-                    });
-                    return slot.intervals && Array.isArray(slot.intervals) ? slot.intervals.map((interval) => (
-                    <div 
-                      key={interval.intervalNumber}
-                      className="bg-muted/50 p-2 rounded text-xs"
-                    >
-                      <div className="font-medium text-center text-primary">
-                        {interval.points || 0} pts
-                      </div>
-                      <div className="text-center text-muted-foreground">
-                        {interval.label || 'Unknown'}
-                      </div>
-                    </div>
-                  )) : (
-                    <div className="text-xs text-muted-foreground text-center col-span-2">
-                      No intervals available
-                    </div>
-                  );
-                  })()}
-                </div>
-              </div>
-
-              {/* Action Button */}
-              <div className="flex justify-center">
-                <Button
-                  onClick={() => {
-                    console.log('Slot selected:', slot);
-                    onSlotSelect?.(slot);
-                  }}
-                  disabled={isLocked}
-                  variant={isSelected ? "default" : "outline"}
-                  className="w-full"
+        <div className="flex space-x-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+          {(() => {
+            const validSlots = slots.filter(slot => {
+              const isValid = slot.start && slot.end && slot.slotNumber !== undefined;
+              return isValid;
+            });
+            
+            return validSlots.map((slot) => {
+              // Fix: Ensure proper type comparison for slot selection
+              const slotNumber = Number(slot.slotNumber);
+              const selectedSlotNumber = selectedSlot ? Number(selectedSlot.slotNumber) : null;
+              const isSelected = selectedSlotNumber === slotNumber;
+              const isExpanded = expandedSlots.has(slotNumber);
+              
+              console.log('Slot selection check:', {
+                slotNumber,
+                selectedSlotNumber,
+                isSelected,
+                slotType: typeof slotNumber,
+                selectedType: typeof selectedSlotNumber,
+                originalSlotNumber: slot.slotNumber,
+                originalSelectedSlotNumber: selectedSlot?.slotNumber,
+                selectedSlotExists: !!selectedSlot,
+                selectedSlotFull: selectedSlot
+              });
+              
+              const isLocked = !slot.timeRemaining || slot.timeRemaining <= 0 || (slot.timeRemaining <= 300000);
+              
+              return (
+                <Card 
+                  key={slotNumber} 
+                  className={`min-w-[280px] max-w-[320px] flex-shrink-0 transition-all duration-200 ${
+                    isSelected 
+                      ? 'ring-2 ring-primary border-primary' 
+                      : 'hover:shadow-md'
+                  } ${isLocked ? 'opacity-75' : ''}`}
                 >
-                  {isLocked ? (
-                    <>
-                      <Lock className="h-4 w-4 mr-2" />
-                      Locked
-                    </>
-                  ) : isSelected ? (
-                    <>
-                      <TrendingUp className="h-4 w-4 mr-2" />
-                      Selected
-                    </>
-                  ) : (
-                    <>
-                      <TrendingUp className="h-4 w-4 mr-2" />
-                      Select Slot
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      });
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <CardTitle className="text-base">
+                      Slot {slot.slotNumber ?? 'Unknown'}
+                    </CardTitle>
+                    <Badge variant={(slot.isActive ?? false) ? "default" : "secondary"}>
+                      {(slot.isActive ?? false) ? "Active" : "Upcoming"}
+                    </Badge>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    {isLocked ? (
+                      <Badge variant="destructive" className="flex items-center space-x-1">
+                        <Lock className="h-3 w-3" />
+                        <span>Locked</span>
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="flex items-center space-x-1">
+                        <Unlock className="h-3 w-3" />
+                        <span>Open</span>
+                      </Badge>
+                    )}
+                    
+                    <div className="text-sm text-muted-foreground">
+                      {slot.pointsIfCorrect || 0} pts
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+
+                             <CardContent className="space-y-3">
+                 {/* Compact Slot Info */}
+                 <div className="space-y-2 text-sm">
+                   <div className="bg-muted p-2 rounded">
+                     <div className="text-xs text-muted-foreground mb-1">Time Window</div>
+                     <div className="font-medium text-xs">
+                       {formatCESTTime(slot.start)} - {formatCESTTime(slot.end)}
+                     </div>
+                   </div>
+
+                                   
+                   {slot.timeRemaining && slot.timeRemaining > 0 && (
+                     <div className="bg-primary/10 p-2 rounded">
+                       <div className="text-xs text-muted-foreground mb-1">
+                         {(slot.isActive ?? false) ? "Ends in:" : "Starts in:"}
+                       </div>
+                       <div className="font-mono font-bold text-primary text-xs">
+                         {formatTimeRemaining(slot.timeRemaining)}
+                       </div>
+                     </div>
+                   )}
+                 </div>
+
+                                 {/* Collapsible Intervals Section */}
+                 {slot.intervals && Array.isArray(slot.intervals) && slot.intervals.length > 0 && (
+                   <div className="border rounded-lg">
+                     <button
+                       onClick={() => toggleSlotExpansion(slotNumber)}
+                       className="w-full p-2 flex items-center justify-between hover:bg-muted/50 transition-colors text-xs"
+                     >
+                       <span className="font-medium">
+                         Intervals ({slot.intervals.length})
+                       </span>
+                       <div className="flex items-center space-x-2">
+                         <span className="text-xs text-muted-foreground">
+                           {slot.intervals.reduce((sum, int) => sum + (int.points || 0), 0)} pts
+                         </span>
+                         {isExpanded ? (
+                           <ChevronDown className="h-3 w-3" />
+                         ) : (
+                           <ChevronRight className="h-3 w-3" />
+                         )}
+                       </div>
+                     </button>
+                     
+                     {isExpanded && (
+                       <div className="border-t bg-muted/30 p-2">
+                         <div className="text-xs text-muted-foreground mb-2">
+                           {slot.intervals.length} intervals:
+                         </div>
+                         <div className="grid grid-cols-2 gap-1">
+                           {slot.intervals.map((interval) => (
+                             <div 
+                               key={interval.intervalNumber}
+                               className="bg-background p-1 rounded text-xs border"
+                             >
+                               <div className="font-medium text-center text-primary">
+                                 {interval.points || 0} pts
+                               </div>
+                               <div className="text-center text-muted-foreground text-xs">
+                                 {interval.label || 'Unknown'}
+                               </div>
+                             </div>
+                           ))}
+                         </div>
+                       </div>
+                     )}
+                   </div>
+                 )}
+
+                {/* Action Button */}
+                <div className="flex justify-center">
+                  <Button
+                    onClick={() => {
+                      console.log('Slot selected:', {
+                        slot,
+                        slotNumber,
+                        selectedSlotNumber,
+                        isSelected
+                      });
+                      // Create a new slot object with consistent slotNumber type
+                      const slotToSelect = {
+                        ...slot,
+                        slotNumber: slotNumber // Use the converted number
+                      };
+                      onSlotSelect?.(slotToSelect);
+                    }}
+                    disabled={isLocked}
+                    variant={isSelected ? "default" : "outline"}
+                    className="w-full text-sm h-8"
+                  >
+                    {isLocked ? (
+                      <>
+                        <Lock className="h-3 w-3 mr-1" />
+                        Locked
+                      </>
+                    ) : isSelected ? (
+                      <>
+                        <TrendingUp className="h-3 w-3 mr-1" />
+                        Selected
+                      </>
+                    ) : (
+                      <>
+                        <TrendingUp className="h-3 w-3 mr-1" />
+                        Select
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        });
       })()}
+        </div>
+        
+        {/* Scroll indicator */}
+        <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none"></div>
+      </div>
     </div>
   );
 }

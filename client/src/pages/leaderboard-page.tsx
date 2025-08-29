@@ -337,15 +337,27 @@ export default function LeaderboardPage() {
                           <TableCell className="font-mono">{entry.totalScore}</TableCell>
                           <TableCell>{entry.totalPredictions}</TableCell>
                           <TableCell>{entry.accuracyPercentage ? parseFloat(entry.accuracyPercentage.toString()).toFixed(1) : '0.0'}%</TableCell>
-                                                     <TableCell>
-                             <div className="flex gap-1">
-                               {entry.badges?.map((badge, index) => (
-                                 <Badge key={index} variant="outline" className="text-xs">
-                                   {badge}
-                                 </Badge>
-                               )) || <span className="text-muted-foreground">No badges</span>}
-                             </div>
-                           </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1 flex-wrap">
+                              {entry.badges && entry.badges.length > 0 ? (
+                                entry.badges.map((badge, index) => (
+                                  <Badge key={index} variant="outline" className="text-xs flex items-center gap-1">
+                                    {badge === '1st_place' && '🥇'}
+                                    {badge === '2nd_place' && '🥈'}
+                                    {badge === '3rd_place' && '🥉'}
+                                    {badge === '4th_place' && '🎖️'}
+                                    {badge === 'starter' && '⭐'}
+                                    {badge.startsWith('streak') && '🔥'}
+                                    {badge.startsWith('accuracy') && '🎯'}
+                                    {badge.startsWith('volume') && '📊'}
+                                    {badge}
+                                  </Badge>
+                                ))
+                              ) : (
+                                <span className="text-muted-foreground">No badges</span>
+                              )}
+                            </div>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

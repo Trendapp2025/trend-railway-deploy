@@ -21,7 +21,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { TrendingUp, LogOut, User, Trophy, Shield, Menu, Home } from "lucide-react";
+import { TrendingUp, LogOut, User, Trophy, Shield, Menu, Home, BarChart3 } from "lucide-react";
 import { Link } from "wouter";
 
 export default function AppHeader() {
@@ -43,6 +43,13 @@ export default function AppHeader() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center space-x-4">
+          <Button variant="ghost" asChild size="sm">
+            <Link href="/chart" className="flex items-center">
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Charts
+            </Link>
+          </Button>
+          
           <Button variant="ghost" asChild size="sm">
             <Link href="/leaderboard" className="flex items-center">
               <Trophy className="h-4 w-4 mr-2" />
@@ -136,6 +143,13 @@ export default function AppHeader() {
                     <span>{t("nav.profile")}</span>
                   </Link>
                 </DropdownMenuItem>
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <Link href="/chart" className="flex w-full">
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    <span>Charts</span>
+                  </Link>
+                </DropdownMenuItem>
+                
                 <DropdownMenuItem asChild className="cursor-pointer">
                   <Link href="/leaderboard" className="flex w-full">
                     <Trophy className="mr-2 h-4 w-4" />

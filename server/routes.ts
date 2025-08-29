@@ -339,41 +339,7 @@ router.post('/admin/slots', adminMiddleware, async (req, res) => {
   res.json(row);
 });
 
-// Middleware to check if user's email is verified
-const emailVerifiedMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  try {
-    const user = requireUser(req);
-    
-    // For Firebase users, check if email is verified from the token
-    if (user.email && user.userId) {
-      try {
-        // Get user info from Firebase Admin to check email verification
-        const firebaseUser = await getAdminAuth().getUser(user.userId);
-        if (!firebaseUser.emailVerified) {
-          return res.status(403).json({ error: 'Email verification required. Please verify your email before accessing this feature.' });
-        }
-        next();
-        return;
-      } catch (firebaseError) {
-        console.log('Failed to get Firebase user, falling back to database check');
-      }
-    }
-    
-    // Fallback to database check for JWT users
-    const dbUser = await getUserById(user.userId);
-    if (!dbUser) {
-      return res.status(401).json({ error: 'User not found' });
-    }
-    
-    if (!dbUser.emailVerified) {
-      return res.status(403).json({ error: 'Email verification required. Please verify your email before accessing this feature.' });
-    }
-    
-    next();
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to verify email status' });
-  }
-};
+
 
 // Health check
 router.get('/health', (req, res) => {
@@ -648,7 +614,7 @@ router.get('/user/me', authMiddleware, async (req, res) => {
 });
 
 // Get current user profile
-router.get('/user/profile', authMiddleware, emailVerifiedMiddleware, async (req, res) => {
+router.get('/user/profile', authMiddleware, async (req, res) => {
   try {
     const profile = await getUserProfile(requireUser(req).userId, requireUser(req).userId);
     res.json(profile);
@@ -658,7 +624,7 @@ router.get('/user/profile', authMiddleware, emailVerifiedMiddleware, async (req,
 });
 
 // Update user profile
-router.put('/user/profile', authMiddleware, emailVerifiedMiddleware, async (req, res) => {
+router.put('/user/profile', authMiddleware, async (req, res) => {
   try {
     const result = await updateUserProfile(requireUser(req).userId, req.body);
     res.json(result);
@@ -876,7 +842,7 @@ router.get('/user/:username/followers', async (req, res) => {
 // ===== PREDICTION ROUTES =====
 
 // Create prediction
-router.post('/predictions', authMiddleware, emailVerifiedMiddleware, async (req, res) => {
+router.post('/predictions', authMiddleware, async (req, res) => {
   try {
     console.log('Creating prediction with payload:', {
       userId: requireUser(req).userId,
@@ -900,12 +866,16 @@ router.post('/predictions', authMiddleware, emailVerifiedMiddleware, async (req,
 });
 
 // Get user predictions
-router.get('/predictions', authMiddleware, emailVerifiedMiddleware, async (req, res) => {
+router.get('/predictions', authMiddleware, async (req, res) => {
   try {
     const userId = requireUser(req).userId;
     console.log('Getting predictions for user:', userId);
     const predictions = await getUserPredictions(userId);
-    console.log('Predictions response (first item):', predictions[0]);
+    console.log('Predictions response:', {
+      count: predictions.length,
+      firstItem: predictions[0],
+      allPredictions: predictions
+    });
     res.json(predictions);
   } catch (error) {
     console.error('Error getting predictions:', error);
@@ -1673,10 +1643,12 @@ router.get('/leaderboard/user', async (req, res) => {
 router.get('/users/:userId/badges', async (req, res) => {
   try {
     const userId = req.params.userId;
+    console.log('Badge endpoint called for userId:', userId);
     
     const { getUserBadges } = await import('./badge-service');
     const badges = await getUserBadges(userId);
     
+    console.log(`Found ${badges.length} badges for user ${userId}:`, badges);
     res.json(badges);
   } catch (error) {
     console.error('Error fetching user badges:', error);

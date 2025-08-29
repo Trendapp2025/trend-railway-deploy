@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -39,7 +39,7 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
     resolver: zodResolver(predictionSchema),
     defaultValues: {
       assetSymbol: assetSymbol || '',
-      duration: '1h',
+      duration: '1h', // Keep this as default
       direction: 'up',
       amount: 1.00,
     },
@@ -51,6 +51,21 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
     selectedSlot,
     selectedDuration
   });
+
+  // Monitor duration changes and sync form
+  useEffect(() => {
+    console.log('Duration state changed:', {
+      selectedDuration,
+      formDuration: form.getValues('duration'),
+      formWatchedDuration: form.watch('duration')
+    });
+    
+    // Ensure form duration is always in sync with selectedDuration
+    if (form.getValues('duration') !== selectedDuration) {
+      console.log('Syncing form duration from', form.getValues('duration'), 'to', selectedDuration);
+      form.setValue('duration', selectedDuration);
+    }
+  }, [selectedDuration, form]);
 
   const createPredictionMutation = useMutation({
     mutationFn: async (data: PredictionFormData & { slotNumber: number }) => {
@@ -108,6 +123,8 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
     const onSubmit = (data: PredictionFormData) => {
     console.log('Form submitted with data:', data);
     console.log('Selected slot:', selectedSlot);
+    console.log('Current selectedDuration:', selectedDuration);
+    console.log('Form duration value:', form.getValues('duration'));
     
     if (!selectedSlot || !selectedSlot.slotNumber) {
       toast({
@@ -133,8 +150,10 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
       return;
     }
 
+    // Ensure we use the current selected duration, not the form data
     const mutationData = {
       ...data,
+      duration: selectedDuration, // Use selectedDuration instead of form data
       slotNumber: selectedSlot.slotNumber,
     };
     console.log('Calling mutation with data:', mutationData);
@@ -142,14 +161,44 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
   };
 
   const handleDurationChange = (duration: string) => {
+    console.log('Duration changed to:', duration);
     setSelectedDuration(duration);
     setSelectedSlot(null); // Reset slot selection when duration changes
     form.setValue('duration', duration);
+    
+    // Force form to update immediately
+    form.trigger('duration');
+    
+    console.log('After duration change:', {
+      selectedDuration: duration,
+      formDuration: form.getValues('duration'),
+      formWatchedDuration: form.watch('duration')
+    });
   };
 
   const handleSlotSelect = (slot: any) => {
-    console.log('Slot selected in form:', slot);
+    console.log('Slot selected in form:', {
+      slot,
+      slotNumber: slot.slotNumber,
+      slotNumberType: typeof slot.slotNumber,
+      currentSelectedSlot: selectedSlot,
+      currentSelectedSlotNumber: selectedSlot?.slotNumber,
+      currentSelectedSlotNumberType: typeof selectedSlot?.slotNumber
+    });
+    
+    // Ensure we're selecting a valid slot
+    if (!slot || slot.slotNumber === undefined) {
+      console.warn('Invalid slot selected:', slot);
+      return;
+    }
+    
+    // Set the new selection directly
     setSelectedSlot(slot);
+    
+    console.log('After setting selected slot:', {
+      newSelectedSlot: slot,
+      selectedSlotState: slot
+    });
   };
 
   const getDurationOptions = () => [
@@ -224,7 +273,9 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
                 onValueChange={handleDurationChange}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select duration" />
+                  <SelectValue placeholder="Select duration">
+                    {getDurationOptions().find(d => d.value === selectedDuration)?.label || 'Select duration'}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {getDurationOptions().map((duration) => (
@@ -261,20 +312,7 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
               </div>
             </div>
 
-            {/* Amount Input */}
-            <div className="space-y-2">
-              <Label htmlFor="amount">Amount (USD)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0.01"
-                {...form.register('amount', { valueAsNumber: true })}
-                placeholder="Enter amount"
-              />
-              {form.formState.errors.amount && (
-                <p className="text-sm text-red-600">{form.formState.errors.amount.message}</p>
-              )}
-            </div>
+            
 
             {/* Selected Slot Info */}
             {(() => {
@@ -317,7 +355,10 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
               disabled={!selectedSlot || createPredictionMutation.isPending}
             >
               {createPredictionMutation.isPending ? (
-                'Submitting...'
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Submitting Prediction...
+                </>
               ) : (
                 <>
                   <TrendingUp className="h-4 w-4 mr-2" />
@@ -325,6 +366,13 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
                 </>
               )}
             </Button>
+
+            {/* Submission Status */}
+            {createPredictionMutation.isPending && (
+              <div className="text-center text-sm text-muted-foreground">
+                Please wait while we submit your prediction...
+              </div>
+            )}
 
             {/* Warning if no slot selected */}
             {!selectedSlot && (

@@ -15,6 +15,7 @@ import ProfilePage from "@/pages/profile-page";
 import PredictionPage from "@/pages/prediction-page";
 import UserProfilePage from "@/pages/user-profile-page";
 import AdminPage from "@/pages/admin-page";
+import ChartPage from "@/pages/chart-page";
 import EmailVerificationPage from "@/pages/email-verification-page";
 import PasswordResetPage from "@/pages/password-reset-page";
 import { ProtectedRoute } from "./lib/protected-route";
@@ -92,6 +93,7 @@ function Router() {
     <Switch>
       <Route path="/" component={HomePage} />
       <Route path="/assets/:symbol" component={AssetDetailPage} />
+      <Route path="/chart/:symbol?" component={ChartPage} />
       <ProtectedRoute path="/predict/:assetSymbol" component={PredictionPage} />
       <ProtectedRoute path="/leaderboard" component={LeaderboardPage} />
       <ProtectedRoute path="/profile" component={ProfilePage} />

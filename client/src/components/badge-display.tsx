@@ -7,9 +7,12 @@ import { Trophy, Star, Target, TrendingUp, Award, Zap, Medal, Crown, Flame, BarC
 import { useLanguage } from "@/hooks/use-language";
 
 interface BadgeDisplayProps {
-  userId: string;
+  userId?: string;
+  badges?: UserBadge[];
   showTitle?: boolean;
   compact?: boolean;
+  inline?: boolean;
+  className?: string;
 }
 
 type UserBadge = {
@@ -19,28 +22,39 @@ type UserBadge = {
   badgeName: string;
   badgeDescription: string;
   monthYear: string;
-  rank?: number;
-  totalScore?: number;
-  metadata?: Record<string, any>;
+  rank?: number | null;
+  totalScore?: number | null;
+  metadata?: unknown;
   createdAt: string;
 };
 
-export default function BadgeDisplay({ userId, showTitle = true, compact = false }: BadgeDisplayProps) {
+export default function BadgeDisplay({ 
+  userId, 
+  badges: propBadges, 
+  showTitle = true, 
+  compact = false, 
+  inline = false,
+  className = ""
+}: BadgeDisplayProps) {
   const { t } = useLanguage();
   const [badges, setBadges] = useState<UserBadge[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Use provided badges or fetch from API
   const { data: badgesData, isLoading } = useQuery<UserBadge[]>({
     queryKey: [`/api/users/${userId}/badges`],
-    enabled: !!userId,
+    enabled: !!userId && !propBadges,
   });
 
   useEffect(() => {
-    if (badgesData) {
+    if (propBadges) {
+      setBadges(propBadges);
+      setLoading(false);
+    } else if (badgesData) {
       setBadges(badgesData);
       setLoading(false);
     }
-  }, [badgesData]);
+  }, [propBadges, badgesData]);
 
   useEffect(() => {
     if (isLoading) {

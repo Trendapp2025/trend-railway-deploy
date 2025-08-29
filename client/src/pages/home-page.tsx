@@ -11,6 +11,7 @@ import { Asset } from "@shared/schema";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrendingUp, TrendingDown, BarChart3, Coins, LineChart, Search, Plus, ListPlus, Globe, Trophy, DollarSign, Bitcoin } from "lucide-react";
+import { Link } from "wouter";
 import AssetCard from "@/components/asset-card";
 import SentimentSummaryChart from "@/components/sentiment-summary-chart";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ export default function HomePage() {
   const stocksCount = stockAssets.length;
   const forexCount = forexAssets.length;
 
+  
   return (
     <div className="min-h-screen bg-background">
       <AppHeader />
@@ -103,6 +105,50 @@ export default function HomePage() {
             </CardHeader>
             <CardContent>
               <AssetSearch />
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Advanced Charts Section */}
+        <section className="mb-8">
+          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+            <CardHeader>
+              <CardTitle className="flex items-center text-blue-900">
+                <BarChart3 className="h-6 w-6 mr-3" />
+                Advanced Trading Charts
+              </CardTitle>
+              <CardDescription className="text-blue-700">
+                Professional charts for stocks, forex, and crypto with multiple timeframes
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
+                    <div className="text-2xl font-bold text-blue-600 mb-2">📈</div>
+                    <h3 className="font-semibold text-blue-900 mb-2">Stocks</h3>
+                    <p className="text-sm text-blue-700">NASDAQ, NYSE, TSX</p>
+                  </div>
+                  <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
+                    <div className="text-2xl font-bold text-blue-600 mb-2">💱</div>
+                    <h3 className="font-semibold text-blue-900 mb-2">Forex</h3>
+                    <p className="text-sm text-blue-700">OANDA, FXCM, FX_IDC</p>
+                  </div>
+                  <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
+                    <div className="text-2xl font-bold text-blue-600 mb-2">₿</div>
+                    <h3 className="font-semibold text-blue-900 mb-2">Crypto</h3>
+                    <p className="text-sm text-blue-700">Binance, Coinbase, Kraken</p>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700">
+                    <Link href="/chart">
+                      <BarChart3 className="h-5 w-5 mr-2" />
+                      Open Advanced Charts
+                    </Link>
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </section>

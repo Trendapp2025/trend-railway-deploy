@@ -8,12 +8,12 @@ import SentimentChart from "@/components/sentiment-chart";
 import { Asset } from "@shared/schema";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BarChart3, Users, TrendingUp, ArrowLeft, Share2, Clock, Star, CalendarClock, Coins, LineChart, DollarSign, TrendingDown, Minus } from "lucide-react";
+import { BarChart3, Users, TrendingUp, ArrowLeft, Share2, Clock, Star, CalendarClock, Coins, LineChart, DollarSign, TrendingDown, Minus, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import TradingViewChart from "@/components/tradingview-chart";
 
 export default function AssetDetailPage() {
   const [, params] = useRoute("/assets/:symbol");
@@ -99,18 +99,7 @@ export default function AssetDetailPage() {
     return change;
   };
 
-  const prepareChartData = () => {
-    if (!priceHistory) return [];
-    
-    return priceHistory
-      .slice()
-      .reverse() // Show oldest to newest
-      .map((item, index) => ({
-        name: new Date(item.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        price: item.price,
-        timestamp: item.timestamp,
-      }));
-  };
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -162,45 +151,30 @@ export default function AssetDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Price History Chart */}
-        {priceHistory && priceHistory.length > 0 && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Price History (30 Days)</CardTitle>
-              <CardDescription>Historical price movement for {asset?.symbol}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RechartsLineChart data={prepareChartData()}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="name" 
-                      tick={{ fontSize: 12 }}
-                      interval="preserveStartEnd"
-                    />
-                    <YAxis 
-                      domain={['dataMin - 1', 'dataMax + 1']}
-                      tick={{ fontSize: 12 }}
-                    />
-                    <Tooltip 
-                      formatter={(value: number) => [`$${formatPrice(value)}`, 'Price']}
-                      labelFormatter={(label) => `Date: ${label}`}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="price" 
-                      stroke="#3b82f6" 
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </RechartsLineChart>
-                </ResponsiveContainer>
+        {/* TradingView Advanced Chart */}
+        <Card className="mb-6">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Advanced Trading Chart</CardTitle>
+                <CardDescription>Professional chart for {asset?.symbol} with multiple timeframes</CardDescription>
               </div>
-            </CardContent>
-          </Card>
-        )}
+              <Link 
+                href={`/chart/${encodeURIComponent(asset?.symbol || 'NASDAQ:AAPL')}`}
+                className="inline-flex items-center px-3 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-md transition-colors"
+              >
+                <Maximize2 className="h-4 w-4 mr-2" />
+                Full Chart
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <TradingViewChart 
+              defaultSymbol={asset?.symbol || 'NASDAQ:AAPL'}
+              height={500}
+            />
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           <Card>

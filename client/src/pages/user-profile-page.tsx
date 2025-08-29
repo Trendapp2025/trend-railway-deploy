@@ -27,6 +27,7 @@ import AppHeader from '../components/app-header';
 import FollowButton from '../components/follow-button';
 import { useAuth } from '../hooks/use-auth';
 import { apiRequest } from '../lib/queryClient';
+import BadgeDisplay from '../components/badge-display';
 
 interface UserProfile {
   id: string;
@@ -279,13 +280,7 @@ export default function UserProfilePage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    {userBadges.map((badge) => (
-                      <Badge key={badge.id} variant="secondary" className="mr-2 mb-2">
-                        {badge.badgeType} - {badge.monthYear}
-                      </Badge>
-                    ))}
-                  </div>
+                  <BadgeDisplay badges={userBadges} />
                 </CardContent>
               </Card>
             )}

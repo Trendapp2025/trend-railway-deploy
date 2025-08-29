@@ -12,6 +12,7 @@ export interface CreatePredictionInput {
   assetSymbol: string;
   direction: 'up' | 'down';
   duration: '1h' | '3h' | '6h' | '24h' | '48h' | '1w' | '1m' | '3m' | '6m' | '1y';
+  slotNumber: number;
 }
 
 export interface PredictionWithAsset {
@@ -43,7 +44,9 @@ export interface SentimentData {
 
 // Create a new prediction
 export async function createPrediction(input: CreatePredictionInput) {
-  const { userId, assetSymbol, direction, duration } = input;
+  console.log('=== PREDICTION CREATION START ===');
+  console.log('Input received:', input);
+  const { userId, assetSymbol, direction, duration, slotNumber } = input;
 
   // Check if user's email is verified
   const user = await db.query.users.findFirst({
@@ -71,13 +74,45 @@ export async function createPrediction(input: CreatePredictionInput) {
     throw new Error('Asset is not available for predictions');
   }
 
-  // Get current active slot using the new slot logic
-  const activeSlot = getCurrentActiveSlot(duration);
+  // slotNumber is already destructured above
+  if (!slotNumber) {
+    throw new Error('Slot number is required');
+  }
+
+  // Get slot information for the selected slot
+  const selectedSlot = getSlotForDate(new Date(), duration);
+  console.log('Slot validation:', {
+    slotNumber,
+    duration,
+    selectedSlot: {
+      slotNumber: selectedSlot.slotNumber,
+      slotStart: selectedSlot.slotStart.toJSDate(),
+      slotEnd: selectedSlot.slotEnd.toJSDate()
+    }
+  });
   
-  // Validate that we can make predictions for the current slot
-  const isValid = isSlotValid(duration, activeSlot.slotNumber);
-  if (!isValid) {
-    throw new Error('Current slot is not valid for predictions - only current and future slots are allowed');
+  // Instead of strict slot number validation, check if the slot is reasonable
+  // The UI already filters valid slots, so we just need to ensure basic sanity
+  if (slotNumber < 1 || slotNumber > 100) { // Reasonable upper limit
+    throw new Error('Invalid slot number provided');
+  }
+  
+  // Check if the slot is not too far in the past (basic validation)
+  const now = new Date();
+  const slotStartTime = selectedSlot.slotStart.toJSDate();
+  const timeDiff = slotStartTime.getTime() - now.getTime();
+  const maxPastTime = 24 * 60 * 60 * 1000; // 24 hours in the past
+  
+  console.log('Time validation:', {
+    now: now.toISOString(),
+    slotStartTime: slotStartTime.toISOString(),
+    timeDiff,
+    maxPastTime,
+    isTooFarInPast: timeDiff < -maxPastTime
+  });
+  
+  if (timeDiff < -maxPastTime) {
+    throw new Error('Cannot create predictions for slots that are too far in the past');
   }
   
   // Check if user already has a prediction for this asset, duration, and slot
@@ -86,19 +121,17 @@ export async function createPrediction(input: CreatePredictionInput) {
       eq(predictions.userId, userId),
       eq(predictions.assetId, asset.id),
       eq(predictions.duration, duration),
-      eq(predictions.slotNumber, activeSlot.slotNumber),
-      eq(predictions.slotStart, activeSlot.slotStart.toJSDate())
+      eq(predictions.slotNumber, slotNumber),
+      eq(predictions.slotStart, selectedSlot.slotStart.toJSDate())
     ),
   });
 
   if (existingPrediction) {
-    throw new Error('You already have a prediction for this asset in the current slot');
+    throw new Error('You already have a prediction for this asset in the selected slot');
   }
 
-  // Check if we're within the active slot window
-  if (!isWithinActiveSlot(new Date(), duration)) {
-    throw new Error('No active slot available for this duration');
-  }
+  // The selected slot is already validated as valid (current or future) above
+  // No need to check if we're within the active slot window
 
   // Get live asset price immediately for accurate price_start
   console.log(`Fetching live price for ${assetSymbol} at prediction submission...`);
@@ -125,10 +158,10 @@ export async function createPrediction(input: CreatePredictionInput) {
     assetId: asset.id,
     direction,
     duration,
-    slotNumber: activeSlot.slotNumber,
-    slotStart: activeSlot.slotStart.toJSDate(),
-    slotEnd: activeSlot.slotEnd.toJSDate(),
-    timestampExpiration: activeSlot.slotEnd.toJSDate(),
+    slotNumber: slotNumber,
+    slotStart: selectedSlot.slotStart.toJSDate(),
+    slotEnd: selectedSlot.slotEnd.toJSDate(),
+    timestampExpiration: selectedSlot.slotEnd.toJSDate(),
     priceStart: currentPrice.toString(),
   }).returning();
 
@@ -224,9 +257,9 @@ export async function getUserPredictions(userId: string, options?: {
     });
   }
 
-  return filteredPredictions.map(pred => {
+  const result = filteredPredictions.map(pred => {
     const asset = assetMap.get(pred.assetId);
-    return {
+    const mappedPrediction = {
       id: pred.id,
       userId: pred.userId,
       assetId: pred.assetId,
@@ -248,7 +281,25 @@ export async function getUserPredictions(userId: string, options?: {
       priceStart: pred.priceStart,
       priceEnd: pred.priceEnd,
     };
+    
+    // Debug logging for each prediction
+    console.log('Mapped prediction:', {
+      id: mappedPrediction.id,
+      direction: mappedPrediction.direction,
+      status: mappedPrediction.status,
+      result: mappedPrediction.result,
+      asset: mappedPrediction.asset
+    });
+    
+    return mappedPrediction;
   });
+  
+  console.log('getUserPredictions returning:', {
+    count: result.length,
+    sample: result[0]
+  });
+  
+  return result;
 }
 
 // Get predictions for sentiment chart

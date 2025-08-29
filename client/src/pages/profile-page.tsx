@@ -38,20 +38,82 @@ export default function ProfilePage() {
   
   // Fetch user profile data
   const { data: userProfile, isLoading: profileLoading } = useQuery<UserProfile>({
-    queryKey: ["/api/user/profile"],
+    queryKey: ["user", "profile"],
     enabled: !!user,
   });
 
-  // Fetch user predictions
-  const { data: userPredictions, isLoading: predictionsLoading } = useQuery<PredictionWithAsset[]>({
-    queryKey: ["/api/predictions"],
+  // Fetch user predictions with raw data logging
+  const { data: userPredictions, isLoading: predictionsLoading, error: predictionsError } = useQuery<PredictionWithAsset[]>({
+    queryKey: ["predictions"],
+    queryFn: async ({ queryKey }) => {
+      try {
+        const response = await fetch('/api/predictions', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+          },
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const rawData = await response.json();
+        console.log('Raw predictions data from server:', rawData);
+        
+        // Validate the data structure
+        if (!Array.isArray(rawData)) {
+          console.error('Server returned non-array data:', rawData);
+          throw new Error('Server returned invalid data format');
+        }
+        
+        // Check each prediction for required fields
+        rawData.forEach((pred, index) => {
+          if (!pred.asset || typeof pred.asset !== 'object') {
+            console.error(`Prediction ${index} missing asset data:`, pred);
+          }
+          if (!pred.direction || !['up', 'down'].includes(pred.direction)) {
+            console.error(`Prediction ${index} invalid direction:`, pred.direction);
+          }
+          if (!pred.status || !['active', 'expired', 'evaluated'].includes(pred.status)) {
+            console.error(`Prediction ${index} invalid status:`, pred.status);
+          }
+          if (!pred.result || !['pending', 'correct', 'incorrect'].includes(pred.result)) {
+            console.error(`Prediction ${index} invalid result:`, pred.result);
+          }
+        });
+        
+        return rawData;
+      } catch (error) {
+        console.error('Error in custom queryFn:', error);
+        throw error;
+      }
+    },
     enabled: !!user,
+    onSuccess: (data) => {
+      console.log('Profile Page - Predictions fetched successfully:', data);
+    },
+    onError: (error) => {
+      console.error('Profile Page - Failed to fetch predictions:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+    }
   });
 
   // Fetch user badges
   const { data: userBadges, isLoading: badgesLoading } = useQuery<UserBadge[]>({
-    queryKey: ["/api/leaderboard/user/badges"],
+    queryKey: [`/api/users/${user?.id}/badges`],
     enabled: !!user,
+  });
+
+  // Debug logging for badges
+  console.log('Profile Page - Badges Debug:', {
+    userBadges,
+    badgesLoading,
+    badgesCount: userBadges?.length || 0,
+    userId: user?.id
   });
 
   // Fetch monthly scores
@@ -95,6 +157,17 @@ export default function ProfilePage() {
   const evaluatedPredictions = safePredictions.filter(p => p.status === "evaluated").length || 0;
   const correctPredictions = safePredictions.filter(p => p.result === "correct").length || 0;
   const accuracyPercentage = evaluatedPredictions > 0 ? (correctPredictions / evaluatedPredictions) * 100 : 0;
+  
+  // Debug logging for predictions
+  console.log('Profile Page - Predictions Debug:', {
+    userPredictions,
+    safePredictions,
+    predictionsLoading,
+    activePredictions,
+    evaluatedPredictions,
+    correctPredictions,
+    accuracyPercentage
+  });
   
   return (
     <div className="min-h-screen bg-background">
@@ -368,13 +441,34 @@ export default function ProfilePage() {
                     Array(5).fill(0).map((_, i) => (
                       <Skeleton key={i} className="h-20 w-full" />
                     ))
-                  ) : userPredictions && userPredictions.length > 0 ? (
-                    userPredictions.map(prediction => (
+                  ) : predictionsError ? (
+                    <div className="text-center py-8 text-red-600">
+                      <div className="text-lg font-medium mb-2">Error loading predictions</div>
+                      <div className="text-sm text-muted-foreground">
+                        {predictionsError.message || 'Failed to load prediction history'}
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        className="mt-4"
+                        onClick={() => window.location.reload()}
+                      >
+                        Try Again
+                      </Button>
+                    </div>
+                  ) : safePredictions && safePredictions.length > 0 ? (
+                    safePredictions.map(prediction => (
                       <PredictionCard key={prediction.id} prediction={prediction} />
                     ))
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">
-                      No predictions yet. Start making predictions to see your history here.
+                      <div className="text-lg font-medium mb-2">No predictions yet</div>
+                      <div className="text-sm">
+                        Start making predictions to see your history here.
+                      </div>
+                      <div className="mt-4 text-xs text-muted-foreground">
+                        Debug: userPredictions={userPredictions?.length || 0}, 
+                        safePredictions={safePredictions?.length || 0}
+                      </div>
                     </div>
                   )}
                 </TabsContent>
@@ -382,8 +476,8 @@ export default function ProfilePage() {
                 <TabsContent value="active" className="space-y-4">
                   {predictionsLoading ? (
                     <Skeleton className="h-20 w-full" />
-                  ) : userPredictions && userPredictions.length > 0 ? (
-                    userPredictions
+                  ) : safePredictions && safePredictions.length > 0 ? (
+                    safePredictions
                       .filter(p => p.status === "active")
                       .map(prediction => (
                         <PredictionCard key={prediction.id} prediction={prediction} />
@@ -398,8 +492,8 @@ export default function ProfilePage() {
                 <TabsContent value="evaluated" className="space-y-4">
                   {predictionsLoading ? (
                     <Skeleton className="h-20 w-full" />
-                  ) : userPredictions && userPredictions.length > 0 ? (
-                    userPredictions
+                  ) : safePredictions && safePredictions.length > 0 ? (
+                    safePredictions
                       .filter(p => p.status === "evaluated")
                       .map(prediction => (
                         <PredictionCard key={prediction.id} prediction={prediction} />
@@ -414,8 +508,8 @@ export default function ProfilePage() {
                 <TabsContent value="correct" className="space-y-4">
                   {predictionsLoading ? (
                     <Skeleton className="h-20 w-full" />
-                  ) : userPredictions && userPredictions.length > 0 ? (
-                    userPredictions
+                  ) : safePredictions && safePredictions.length > 0 ? (
+                    safePredictions
                       .filter(p => p.result === "correct")
                       .map(prediction => (
                         <PredictionCard key={prediction.id} prediction={prediction} />
