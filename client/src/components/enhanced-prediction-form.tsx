@@ -8,17 +8,15 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Badge } from './ui/badge';
-import { Clock, Lock, TrendingUp, AlertCircle } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../hooks/use-toast';
 import { useLanguage } from '../hooks/use-language';
-import { EnhancedSlotDisplay } from './enhanced-slot-display';
 
 const predictionSchema = z.object({
   assetSymbol: z.string().min(1, 'Asset is required'),
   duration: z.string().min(1, 'Duration is required'),
   direction: z.enum(['up', 'down'], { required_error: 'Direction is required' }),
-  amount: z.number().min(0.01, 'Amount must be at least 0.01'),
 });
 
 type PredictionFormData = z.infer<typeof predictionSchema>;
@@ -32,23 +30,20 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
   const { t } = useLanguage();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [selectedSlot, setSelectedSlot] = useState<any>(null);
-  const [selectedDuration, setSelectedDuration] = useState<string>('1h');
+  const [selectedDuration, setSelectedDuration] = useState<string>('short');
 
   const form = useForm<PredictionFormData>({
     resolver: zodResolver(predictionSchema),
     defaultValues: {
       assetSymbol: assetSymbol || '',
-      duration: '1h', // Keep this as default
+      duration: 'short', // Keep this as default
       direction: 'up',
-      amount: 1.00,
     },
   });
   
   console.log('Form initialized with:', {
     assetSymbol,
     formValues: form.getValues(),
-    selectedSlot,
     selectedDuration
   });
 
@@ -68,9 +63,8 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
   }, [selectedDuration, form]);
 
   const createPredictionMutation = useMutation({
-    mutationFn: async (data: PredictionFormData & { slotNumber: number }) => {
+    mutationFn: async (data: PredictionFormData) => {
       console.log('Creating prediction with data:', data);
-      console.log('Selected slot for mutation:', selectedSlot);
       
       const response = await fetch('/api/predictions', {
         method: 'POST',
@@ -80,7 +74,8 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
         },
         body: JSON.stringify({
           ...data,
-          slotNumber: selectedSlot.slotNumber ?? 0,
+          amount: 1.0, // Fixed amount for simplified slot system
+          slotNumber: 1, // Always use slot 1 for simplified slot system
         }),
       });
 
@@ -105,9 +100,8 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
       queryClient.invalidateQueries({ queryKey: ['predictions'] });
       queryClient.invalidateQueries({ queryKey: ['slots', selectedDuration] });
       
-      // Reset form and selection
+      // Reset form
       form.reset();
-      setSelectedSlot(null);
       onSuccess?.();
     },
     onError: (error: Error) => {
@@ -122,39 +116,14 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
 
     const onSubmit = (data: PredictionFormData) => {
     console.log('Form submitted with data:', data);
-    console.log('Selected slot:', selectedSlot);
     console.log('Current selectedDuration:', selectedDuration);
     console.log('Form duration value:', form.getValues('duration'));
     
-    if (!selectedSlot || !selectedSlot.slotNumber) {
-      toast({
-        title: 'No Slot Selected',
-        description: 'Please select a valid slot before submitting your prediction.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Check if slot is locked
-    console.log('Checking if slot is locked:', {
-      timeRemaining: selectedSlot.timeRemaining,
-      isLocked: selectedSlot.timeRemaining <= 300000
-    });
-    
-    if (selectedSlot.timeRemaining <= 300000) { // 5 minutes before start
-      toast({
-        title: 'Slot Locked',
-        description: 'This slot is locked. Please select an open slot.',
-        variant: 'destructive',
-      });
-      return;
-    }
 
     // Ensure we use the current selected duration, not the form data
     const mutationData = {
       ...data,
       duration: selectedDuration, // Use selectedDuration instead of form data
-      slotNumber: selectedSlot.slotNumber,
     };
     console.log('Calling mutation with data:', mutationData);
     createPredictionMutation.mutate(mutationData);
@@ -163,7 +132,6 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
   const handleDurationChange = (duration: string) => {
     console.log('Duration changed to:', duration);
     setSelectedDuration(duration);
-    setSelectedSlot(null); // Reset slot selection when duration changes
     form.setValue('duration', duration);
     
     // Force form to update immediately
@@ -176,59 +144,31 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
     });
   };
 
-  const handleSlotSelect = (slot: any) => {
-    console.log('Slot selected in form:', {
-      slot,
-      slotNumber: slot.slotNumber,
-      slotNumberType: typeof slot.slotNumber,
-      currentSelectedSlot: selectedSlot,
-      currentSelectedSlotNumber: selectedSlot?.slotNumber,
-      currentSelectedSlotNumberType: typeof selectedSlot?.slotNumber
-    });
-    
-    // Ensure we're selecting a valid slot
-    if (!slot || slot.slotNumber === undefined) {
-      console.warn('Invalid slot selected:', slot);
-      return;
-    }
-    
-    // Set the new selection directly
-    setSelectedSlot(slot);
-    
-    console.log('After setting selected slot:', {
-      newSelectedSlot: slot,
-      selectedSlotState: slot
-    });
-  };
 
   const getDurationOptions = () => [
-    { value: '1h', label: '1 Hour' },
-    { value: '3h', label: '3 Hours' },
-    { value: '6h', label: '6 Hours' },
-    { value: '24h', label: '1 Day' },
-    { value: '48h', label: '2 Days' },
-    { value: '1w', label: '1 Week' },
-    { value: '1m', label: '1 Month' },
-    { value: '3m', label: '3 Months' },
-    { value: '6m', label: '6 Months' },
-    { value: '1y', label: '1 Year' },
+    { value: 'short', label: 'Short Term (1 Week)', description: '10/3 points' },
+    { value: 'medium', label: 'Medium Term (1 Month)', description: '15/5 points' },
+    { value: 'long', label: 'Long Term (3 Months)', description: '20/7 points' },
   ];
 
-  const getAssetOptions = () => [
-    { value: 'bitcoin', label: 'Bitcoin (BTC)' },
-    { value: 'ethereum', label: 'Ethereum (ETH)' },
-    { value: 'cardano', label: 'Cardano (ADA)' },
-    { value: 'solana', label: 'Solana (SOL)' },
-    { value: 'polkadot', label: 'Polkadot (DOT)' },
-    { value: 'AAPL', label: 'Apple Inc. (AAPL)' },
-    { value: 'MSFT', label: 'Microsoft (MSFT)' },
-    { value: 'GOOGL', label: 'Alphabet (GOOGL)' },
-    { value: 'AMZN', label: 'Amazon (AMZN)' },
-    { value: 'TSLA', label: 'Tesla (TSLA)' },
-    { value: 'EUR/USD', label: 'EUR/USD' },
-    { value: 'GBP/USD', label: 'GBP/USD' },
-    { value: 'USD/JPY', label: 'USD/JPY' },
-  ];
+  const getAssetDisplayName = (symbol: string) => {
+    const assetMap: { [key: string]: string } = {
+      'bitcoin': 'Bitcoin (BTC)',
+      'ethereum': 'Ethereum (ETH)',
+      'cardano': 'Cardano (ADA)',
+      'solana': 'Solana (SOL)',
+      'polkadot': 'Polkadot (DOT)',
+      'AAPL': 'Apple Inc. (AAPL)',
+      'MSFT': 'Microsoft (MSFT)',
+      'GOOGL': 'Alphabet (GOOGL)',
+      'AMZN': 'Amazon (AMZN)',
+      'TSLA': 'Tesla (TSLA)',
+      'EUR/USD': 'EUR/USD',
+      'GBP/USD': 'GBP/USD',
+      'USD/JPY': 'USD/JPY',
+    };
+    return assetMap[symbol] || symbol;
+  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -242,27 +182,17 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
         </CardHeader>
         <CardContent className="space-y-4">
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {/* Asset Selection */}
+            {/* Asset Display (Read-only) */}
             <div className="space-y-2">
               <Label htmlFor="assetSymbol">Asset</Label>
-              <Select
-                value={form.watch('assetSymbol')}
-                onValueChange={(value) => form.setValue('assetSymbol', value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select an asset" />
-                </SelectTrigger>
-                <SelectContent>
-                  {getAssetOptions().map((asset) => (
-                    <SelectItem key={asset.value} value={asset.value}>
-                      {asset.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {form.formState.errors.assetSymbol && (
-                <p className="text-sm text-red-600">{form.formState.errors.assetSymbol.message}</p>
-              )}
+              <div className="flex items-center space-x-2 p-3 border rounded-md bg-muted/50">
+                <Badge variant="outline" className="text-sm">
+                  {assetSymbol?.toUpperCase()}
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  {getAssetDisplayName(assetSymbol || '')}
+                </span>
+              </div>
             </div>
 
             {/* Duration Selection */}
@@ -314,45 +244,12 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
 
             
 
-            {/* Selected Slot Info */}
-            {(() => {
-              console.log('Rendering selected slot info:', selectedSlot);
-              return selectedSlot && (
-              <Card className="bg-muted/30 border-muted">
-                <CardContent className="pt-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Selected Slot</span>
-                    <Badge variant={(selectedSlot.isActive ?? false) ? "default" : "secondary"}>
-                      Slot {selectedSlot.slotNumber ?? 'Unknown'}
-                    </Badge>
-                  </div>
-                  
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <div>Time: {(() => {
-                      try {
-                        const startDate = new Date(selectedSlot.start);
-                        const endDate = new Date(selectedSlot.end);
-                        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-                          return 'Invalid Date';
-                        }
-                        return `${startDate.toLocaleString('en-GB', { timeZone: 'Europe/Berlin' })} - ${endDate.toLocaleString('en-GB', { timeZone: 'Europe/Berlin' })}`;
-                      } catch (error) {
-                        return 'Invalid Date';
-                      }
-                    })()}</div>
-                    <div>Points: {selectedSlot.pointsIfCorrect || 0}</div>
-                    <div>Status: {!selectedSlot.timeRemaining || selectedSlot.timeRemaining <= 300000 ? 'Locked' : 'Open'}</div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-            })()}
 
             {/* Submit Button */}
             <Button
               type="submit"
               className="w-full"
-              disabled={!selectedSlot || createPredictionMutation.isPending}
+              disabled={createPredictionMutation.isPending}
             >
               {createPredictionMutation.isPending ? (
                 <>
@@ -374,35 +271,10 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
               </div>
             )}
 
-            {/* Warning if no slot selected */}
-            {!selectedSlot && (
-              <div className="flex items-center space-x-2 text-amber-600 text-sm">
-                <AlertCircle className="h-4 w-4" />
-                <span>Please select a slot below before submitting</span>
-              </div>
-            )}
           </form>
         </CardContent>
       </Card>
 
-      {/* Slot Selection */}
-      <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Clock className="h-5 w-5" />
-              <span>Select Slot</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <EnhancedSlotDisplay
-              duration={selectedDuration}
-              onSlotSelect={handleSlotSelect}
-              selectedSlot={selectedSlot}
-            />
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

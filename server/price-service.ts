@@ -1,6 +1,16 @@
 import { db } from './db';
 import { assets, assetPrices } from '../shared/schema';
 import { eq, desc, and, gte, lte } from 'drizzle-orm';
+import dotenv from 'dotenv';
+dotenv.config({ path: '../.env' });
+
+// Finnhub API configuration
+const FINNHUB_TOKEN = 'd30rl8pr01qnu2qvbpl0d30rl8pr01qnu2qvbplg';
+const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
+
+// OpenExchange Rates API configuration for forex
+const OPENEXCHANGE_API_KEY = '9655becae9d04bbfbb18c039e305f774';
+const OPENEXCHANGE_BASE_URL = 'https://openexchangerates.org/api';
 
 // Cache for storing recent prices to avoid excessive API calls
 const priceCache = new Map<string, { price: number; timestamp: Date }>();
@@ -48,6 +58,21 @@ export async function getAssetBySymbol(symbol: string) {
   }
 }
 
+// Get current price for an asset by ID
+export async function getCurrentPrice(assetId: string): Promise<number | null> {
+  try {
+    const latestPrice = await db.query.assetPrices.findFirst({
+      where: eq(assetPrices.assetId, assetId),
+      orderBy: [desc(assetPrices.timestamp)],
+    });
+    
+    return latestPrice?.price || null;
+  } catch (error) {
+    console.error('Error fetching current price:', error);
+    return null;
+  }
+}
+
 // Get asset price from cache or database
 export async function getAssetPrice(symbol: string): Promise<number | null> {
   const cacheKey = symbol.toUpperCase();
@@ -89,29 +114,83 @@ export async function getLiveAssetPrice(symbol: string): Promise<number | null> 
       return null;
     }
 
-    // Fetch live price based on asset type
-    switch (asset.type) {
-      case 'crypto':
-        return await getLiveCryptoPrice(symbol);
-      case 'stock':
-        return await getLiveStockPrice(symbol);
-      case 'forex':
-        return await getLiveForexPrice(symbol);
-      default:
-        console.error(`Unknown asset type: ${asset.type}`);
-        return null;
+    // Use Finnhub for all asset types
+    const price = await getFinnhubPrice(symbol, asset.type);
+    
+    if (price && price > 0) {
+      // Store the price in database
+      await storeAssetPrice(asset.id, price, 'finnhub');
     }
+
+    return price;
   } catch (error) {
     console.error(`Error fetching live price for ${symbol}:`, error);
     return null;
   }
 }
 
-// Get live crypto price from CoinGecko
-async function getLiveCryptoPrice(symbol: string): Promise<number | null> {
+// Finnhub price fetching functions
+export async function getFinnhubPrice(symbol: string, type: string): Promise<number | null> {
   try {
+    let price: number | null = null;
+    
+    switch (type) {
+      case 'crypto':
+        price = await getFinnhubCryptoPrice(symbol);
+        break;
+      case 'stock':
+        price = await getFinnhubStockPrice(symbol);
+        break;
+      case 'forex':
+        // Try Finnhub first, then OpenExchange as fallback
+        price = await getFinnhubForexPrice(symbol);
+        if (!price || price <= 0) {
+          console.log(`Finnhub forex failed for ${symbol}, trying OpenExchange...`);
+          price = await getOpenExchangeForexPrice(symbol);
+        }
+        break;
+      default:
+        console.error(`Unknown asset type for Finnhub: ${type}`);
+        return null;
+    }
+    
+    if (price !== null && price >= 0) {
+      console.log(`Price for ${symbol} (${type}): ${price}`);
+      return price;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Error fetching Finnhub price for ${symbol}:`, error);
+    return null;
+  }
+}
+
+// Get crypto price from Finnhub
+async function getFinnhubCryptoPrice(symbol: string): Promise<number | null> {
+  try {
+    // Handle Binance symbols by extracting the base currency
+    let finnhubSymbol = symbol;
+    
+    if (symbol.startsWith('BINANCE:')) {
+      // Extract the base currency from Binance symbol (e.g., BINANCE:BTCUSDT -> BTC)
+      const tradingPair = symbol.replace('BINANCE:', '');
+      let baseSymbol = tradingPair;
+      
+      // Try to extract base currency by removing common quote currencies
+      const quoteCurrencies = ['USDT', 'USDC', 'BTC', 'ETH', 'BNB', 'FDUSD', 'TRY', 'BUSD', 'DAI'];
+      for (const quote of quoteCurrencies) {
+        if (tradingPair.endsWith(quote)) {
+          baseSymbol = tradingPair.slice(0, -quote.length);
+          break;
+        }
+      }
+      
+      finnhubSymbol = baseSymbol;
+    }
+    
     const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${symbol.toLowerCase()}&vs_currencies=usd`,
+      `${FINNHUB_BASE_URL}/quote?symbol=${finnhubSymbol}&token=${FINNHUB_TOKEN}`,
       {
         headers: {
           'User-Agent': 'Trend-App/1.0',
@@ -120,15 +199,259 @@ async function getLiveCryptoPrice(symbol: string): Promise<number | null> {
     );
 
     if (!response.ok) {
-      console.error(`Failed to fetch live crypto price for ${symbol}: ${response.statusText}`);
+      console.error(`Failed to fetch Finnhub crypto price for ${symbol} (${finnhubSymbol}): ${response.statusText}`);
       return null;
     }
 
     const data = await response.json();
-    const price = data[symbol.toLowerCase()]?.usd;
+    
+    // Check if we got a valid response
+    if (data.c && typeof data.c === 'number' && data.c > 0) {
+      console.log(`Finnhub crypto price for ${symbol} (${finnhubSymbol}): ${data.c}`);
+      return data.c; // 'c' is current price in Finnhub API
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Error fetching Finnhub crypto price for ${symbol}:`, error);
+    return null;
+  }
+}
+
+// Get stock price from Finnhub
+async function getFinnhubStockPrice(symbol: string): Promise<number | null> {
+  try {
+    const response = await fetch(
+      `${FINNHUB_BASE_URL}/quote?symbol=${symbol}&token=${FINNHUB_TOKEN}`,
+      {
+        headers: {
+          'User-Agent': 'Trend-App/1.0',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`Failed to fetch Finnhub stock price for ${symbol}: ${response.statusText}`);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    // Check if we got a valid response
+    if (data.c && typeof data.c === 'number' && data.c > 0) {
+      return data.c; // 'c' is current price in Finnhub API
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Error fetching Finnhub stock price for ${symbol}:`, error);
+    return null;
+  }
+}
+
+// Get forex price from Finnhub
+async function getFinnhubForexPrice(symbol: string): Promise<number | null> {
+  try {
+    const response = await fetch(
+      `${FINNHUB_BASE_URL}/forex/rates?base=${symbol.split('/')[0]}&token=${FINNHUB_TOKEN}`,
+      {
+        headers: {
+          'User-Agent': 'Trend-App/1.0',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`Failed to fetch Finnhub forex price for ${symbol}: ${response.statusText}`);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    // Extract the rate for the target currency
+    const targetCurrency = symbol.split('/')[1];
+    if (data.quote && data.quote[targetCurrency] !== undefined) {
+      const rate = data.quote[targetCurrency];
+      if (typeof rate === 'number' && rate >= 0) {
+        return rate;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Error fetching Finnhub forex price for ${symbol}:`, error);
+    return null;
+  }
+}
+
+// Get forex price from OpenExchange Rates
+async function getOpenExchangeForexPrice(symbol: string): Promise<number | null> {
+  try {
+    // Handle OANDA symbols by converting format
+    let processedSymbol = symbol;
+    if (symbol.startsWith('OANDA:')) {
+      // Convert OANDA:EUR_USD to EUR/USD
+      processedSymbol = symbol.replace('OANDA:', '').replace('_', '/');
+    }
+    
+    const [baseCurrency, targetCurrency] = processedSymbol.split('/');
+    
+    if (!baseCurrency || !targetCurrency) {
+      console.error(`Invalid forex symbol format: ${symbol} (processed: ${processedSymbol})`);
+      return null;
+    }
+
+    // OpenExchange uses USD as base, so we need to calculate the rate
+    const response = await fetch(
+      `${OPENEXCHANGE_BASE_URL}/latest.json?app_id=${OPENEXCHANGE_API_KEY}`,
+      {
+        headers: {
+          'User-Agent': 'Trend-App/1.0',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`Failed to fetch OpenExchange forex price for ${symbol}: ${response.statusText}`);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    if (!data.rates) {
+      console.error(`Invalid OpenExchange response for ${symbol}`);
+      return null;
+    }
+
+    let rate: number | null = null;
+
+    if (baseCurrency === 'USD') {
+      // USD/XXX - get rate directly
+      if (data.rates[targetCurrency] !== undefined) {
+        rate = data.rates[targetCurrency];
+      }
+    } else if (targetCurrency === 'USD') {
+      // XXX/USD - calculate 1/rate
+      if (data.rates[baseCurrency] !== undefined) {
+        rate = 1 / data.rates[baseCurrency];
+      }
+    } else {
+      // XXX/YYY - calculate (XXX/USD) / (YYY/USD)
+      if (data.rates[baseCurrency] !== undefined && data.rates[targetCurrency] !== undefined) {
+        rate = data.rates[targetCurrency] / data.rates[baseCurrency];
+      }
+    }
+    
+    if (rate !== null && typeof rate === 'number' && rate >= 0) {
+      console.log(`OpenExchange forex price for ${symbol}: ${rate}`);
+      return rate;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Error fetching OpenExchange forex price for ${symbol}:`, error);
+    return null;
+  }
+}
+
+// Get live crypto price from CoinGecko
+export async function getLiveCryptoPrice(symbol: string): Promise<number | null> {
+  try {
+    // Handle Binance symbols by extracting the base currency
+    let coinGeckoId = symbol.toLowerCase();
+    
+    if (symbol.startsWith('BINANCE:')) {
+      // Extract the base currency from Binance symbol (e.g., BINANCE:BTCUSDT -> btc)
+      const tradingPair = symbol.replace('BINANCE:', '');
+      // For pairs like BTCUSDT, extract BTC; for 1INCHBTC, extract 1INCH
+      let baseSymbol = tradingPair;
+      
+      // Try to extract base currency by removing common quote currencies
+      const quoteCurrencies = ['USDT', 'USDC', 'BTC', 'ETH', 'BNB', 'FDUSD', 'TRY', 'BUSD', 'DAI'];
+      for (const quote of quoteCurrencies) {
+        if (tradingPair.endsWith(quote)) {
+          baseSymbol = tradingPair.slice(0, -quote.length);
+          break;
+        }
+      }
+      
+      coinGeckoId = baseSymbol.toLowerCase();
+      
+      // Map common symbols to CoinGecko IDs
+      const symbolMap: { [key: string]: string } = {
+        'btc': 'bitcoin',
+        'eth': 'ethereum',
+        'ada': 'cardano',
+        'sol': 'solana',
+        'dot': 'polkadot',
+        'matic': 'matic-network',
+        'avax': 'avalanche-2',
+        'link': 'chainlink',
+        'atom': 'cosmos',
+        'near': 'near',
+        'ftm': 'fantom',
+        'algo': 'algorand',
+        'vet': 'vechain',
+        'icp': 'internet-computer',
+        'fil': 'filecoin',
+        'aave': 'aave',
+        'uni': 'uniswap',
+        'sushi': 'sushi',
+        'comp': 'compound-governance-token',
+        'mkr': 'maker',
+        'snx': 'havven',
+        'yfi': 'yearn-finance',
+        'crv': 'curve-dao-token',
+        '1inch': '1inch',
+        'bal': 'balancer',
+        'ren': 'republic-protocol',
+        'knc': 'kyber-network-crystal',
+        'zrx': '0x',
+        'bnt': 'bancor',
+        'lrc': 'loopring',
+        'enj': 'enjincoin',
+        'mana': 'decentraland',
+        'sand': 'the-sandbox',
+        'axs': 'axie-infinity',
+        'chz': 'chiliz',
+        'flow': 'flow',
+        'theta': 'theta-token',
+        'xtz': 'tezos',
+        'eos': 'eos',
+        'trx': 'tron',
+        'xlm': 'stellar',
+        'xrp': 'ripple',
+        'ltc': 'litecoin',
+        'bch': 'bitcoin-cash',
+        'doge': 'dogecoin',
+        'shib': 'shiba-inu',
+        'pepe': 'pepe',
+        'floki': 'floki',
+        'bonk': 'bonk'
+      };
+      
+      coinGeckoId = symbolMap[coinGeckoId] || coinGeckoId;
+    }
+
+    const response = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoId}&vs_currencies=usd`,
+      {
+        headers: {
+          'User-Agent': 'Trend-App/1.0',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`Failed to fetch live crypto price for ${symbol} (${coinGeckoId}): ${response.statusText}`);
+      return null;
+    }
+
+    const data = await response.json();
+    const price = data[coinGeckoId]?.usd;
 
     if (price && typeof price === 'number') {
-      console.log(`Live crypto price for ${symbol}: ${price}`);
+      console.log(`Live crypto price for ${symbol} (${coinGeckoId}): ${price}`);
       return price;
     }
 

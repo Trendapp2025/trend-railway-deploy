@@ -2,7 +2,7 @@ import { db } from './db';
 import { slotConfigs } from '../shared/schema';
 import { eq, and, gte, lte, asc } from 'drizzle-orm';
 import { DateTime } from 'luxon';
-export type DurationKey = '1h' | '3h' | '6h' | '24h' | '48h' | '1w' | '1m' | '3m' | '6m' | '1y';
+export type DurationKey = '1h' | '3h' | '6h' | '24h' | '48h' | '1w' | '1m' | '3m' | '6m' | '1y' | 'short' | 'medium' | 'long';
 
 export interface SlotInfo {
   slotNumber: number;
@@ -75,6 +75,23 @@ const SLOT_CONFIGURATIONS = {
     intervals: 4,
     intervalDuration: 129600, // minutes (4×3 months)
     points: [150, 100, 50, 20]
+  },
+  
+  // New simplified duration system
+  'short': {
+    intervals: 1,
+    intervalDuration: 7 * 24 * 60, // 1 week in minutes
+    points: [10] // First half gets 10 points, second half gets 3 (handled in lib/slots.ts)
+  },
+  'medium': {
+    intervals: 1,
+    intervalDuration: 30 * 24 * 60, // 1 month in minutes
+    points: [15] // First half gets 15 points, second half gets 5 (handled in lib/slots.ts)
+  },
+  'long': {
+    intervals: 1,
+    intervalDuration: 90 * 24 * 60, // 3 months in minutes
+    points: [20] // First half gets 20 points, second half gets 7 (handled in lib/slots.ts)
   }
 };
 
@@ -284,11 +301,11 @@ export function getFixedCESTBoundaries(duration: DurationKey, referenceDate?: Da
       
     case '3m':
       // Quarterly: start on Jan 1, Apr 1, Jul 1, Oct 1 at 00:00
-      const quarter = Math.floor((now.month - 1) / 3);
-      const quarterMonth = quarter * 3 + 1;
+      const quarter3m = Math.floor((now.month - 1) / 3);
+      const quarterMonth = quarter3m * 3 + 1;
       start = now.set({ month: quarterMonth, day: 1 }).startOf('day');
       end = start.plus({ months: 3 });
-      slotNumber = quarter + 1;
+      slotNumber = quarter3m + 1;
       break;
       
     case '6m':
@@ -305,6 +322,31 @@ export function getFixedCESTBoundaries(duration: DurationKey, referenceDate?: Da
       start = now.startOf('year');
       end = start.plus({ years: 1 });
       slotNumber = now.year;
+      break;
+      
+    // New simplified duration system
+    case 'short':
+      // Short: Monday → Sunday, CEST timezone
+      const dayOfWeek = now.weekday; // 1 = Monday, 7 = Sunday
+      const daysToMonday = dayOfWeek === 1 ? 0 : dayOfWeek === 7 ? 6 : dayOfWeek - 1;
+      start = now.minus({ days: daysToMonday }).startOf('day');
+      end = start.plus({ days: 7 }).minus({ milliseconds: 1 });
+      slotNumber = 1; // Always slot 1 for simplified system
+      break;
+      
+    case 'medium':
+      // Medium: 1st day → last day of the month, European calendar, CEST timezone
+      start = now.startOf('month');
+      end = now.endOf('month');
+      slotNumber = 1; // Always slot 1 for simplified system
+      break;
+      
+    case 'long':
+      // Long: quarters (Jan–Mar, Apr–Jun, Jul–Sep, Oct–Dec), CEST timezone
+      const longQuarter = Math.floor((now.month - 1) / 3);
+      start = now.set({ month: longQuarter * 3 + 1, day: 1 }).startOf('day');
+      end = start.plus({ months: 3 }).minus({ milliseconds: 1 });
+      slotNumber = 1; // Always slot 1 for simplified system
       break;
       
     default:
@@ -369,6 +411,16 @@ export function getAllSlotsForDuration(duration: DurationKey, count: number = 10
       case '1y':
         referenceDate = now.plus({ years: i });
         break;
+        
+      // New simplified duration system - only return current slot
+      case 'short':
+      case 'medium':
+      case 'long':
+        // For simplified system, only return the current slot
+        if (i !== 0) continue; // Skip other iterations
+        referenceDate = now;
+        break;
+        
       default:
         continue;
     }
@@ -496,8 +548,8 @@ export function getSlotForDate(date: Date | string, duration: DurationKey): Slot
       break;
     case '3m':
     case '6m':
-      const quarter = Math.floor((now.month - 1) / 3);
-      periodStart = now.set({ month: quarter * 3 + 1, day: 1 }).startOf('day');
+      const quarterPeriod = Math.floor((now.month - 1) / 3);
+      periodStart = now.set({ month: quarterPeriod * 3 + 1, day: 1 }).startOf('day');
       break;
     case '1y':
       periodStart = now.startOf('year');

@@ -16,13 +16,13 @@ interface Interval {
 
 interface Slot {
   slotNumber?: number;
-  start: Date | string;
-  end: Date | string;
+  slotStart: Date | string;
+  slotEnd: Date | string;
+  slotLabel: string;
+  points: number;
+  isFirstHalf: boolean;
   isActive?: boolean;
-  timeRemaining?: number;
-  pointsIfCorrect?: number;
-  penaltyIfWrong?: number;
-  intervals?: Interval[];
+  isValid?: boolean;
 }
 
 interface LockStatus {
@@ -148,32 +148,18 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
 
   const getDurationLabel = (duration: string): string => {
     const labels: Record<string, string> = {
-      '1h': '1 Hour',
-      '3h': '3 Hours',
-      '6h': '6 Hours',
-      '24h': '1 Day',
-      '48h': '2 Days',
-      '1w': '1 Week',
-      '1m': '1 Month',
-      '3m': '3 Months',
-      '6m': '6 Months',
-      '1y': '1 Year'
+      'short': 'Short Term (1 Week)',
+      'medium': 'Medium Term (1 Month)',
+      'long': 'Long Term (3 Months)',
     };
     return labels[duration] || duration;
   };
 
   const getDurationColor = (duration: string): string => {
     const colors: Record<string, string> = {
-      '1h': 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
-      '3h': 'bg-green-500/20 text-green-300 border border-green-500/30',
-      '6h': 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30',
-      '24h': 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
-      '48h': 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30',
-      '1w': 'bg-pink-500/20 text-pink-300 border border-pink-500/30',
-      '1m': 'bg-red-500/20 text-red-300 border border-red-500/30',
-      '3m': 'bg-orange-500/20 text-orange-300 border border-orange-500/30',
-      '6m': 'bg-teal-500/20 text-teal-300 border border-teal-500/30',
-      '1y': 'bg-gray-500/20 text-gray-300 border border-gray-500/30'
+      'short': 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
+      'medium': 'bg-green-500/20 text-green-300 border border-green-500/30',
+      'long': 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
     };
     return colors[duration] || 'bg-gray-500/20 text-gray-300 border border-gray-500/30';
   };
@@ -224,9 +210,9 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
         <div className="flex items-start space-x-2">
           <Info className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
           <div className="text-sm text-blue-300">
-            <p className="font-medium">How it works:</p>
-            <p>Each slot represents a {getDurationLabel(duration).toLowerCase()} time window. The slot is divided into smaller intervals where you can earn points based on your prediction accuracy.</p>
-            <p className="mt-1 text-xs">For example, a 1-hour slot might have 4 intervals of 15 minutes each, while a 1-day slot might have 24 intervals of 1 hour each.</p>
+            <p className="font-medium">Simplified Slot System:</p>
+            <p>Each duration has one active period. Points depend on when you make your prediction:</p>
+            <p className="mt-1 text-xs">• First half of period: Full points • Second half: 1/3 points</p>
           </div>
         </div>
       </div>
@@ -238,14 +224,9 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
         </Badge>
       </div>
 
-            {/* Horizontal Scrollable Slots */}
+            {/* Simplified Single Slot Display */}
       <div className="relative">
-        {/* Scroll hint */}
-        <div className="text-xs text-muted-foreground mb-2 flex items-center justify-center">
-          <span>← Scroll to see all available slots →</span>
-        </div>
-        
-        <div className="flex space-x-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+        <div className="flex justify-center">
           {(() => {
             const validSlots = slots.filter(slot => {
               const isValid = slot.start && slot.end && slot.slotNumber !== undefined;
@@ -253,30 +234,17 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
             });
             
             return validSlots.map((slot) => {
-              // Fix: Ensure proper type comparison for slot selection
+              // Simplified system - only one slot per duration
               const slotNumber = Number(slot.slotNumber);
               const selectedSlotNumber = selectedSlot ? Number(selectedSlot.slotNumber) : null;
               const isSelected = selectedSlotNumber === slotNumber;
-              const isExpanded = expandedSlots.has(slotNumber);
               
-              console.log('Slot selection check:', {
-                slotNumber,
-                selectedSlotNumber,
-                isSelected,
-                slotType: typeof slotNumber,
-                selectedType: typeof selectedSlotNumber,
-                originalSlotNumber: slot.slotNumber,
-                originalSelectedSlotNumber: selectedSlot?.slotNumber,
-                selectedSlotExists: !!selectedSlot,
-                selectedSlotFull: selectedSlot
-              });
-              
-              const isLocked = !slot.timeRemaining || slot.timeRemaining <= 0 || (slot.timeRemaining <= 300000);
+              const isLocked = !slot.isValid || slot.isValid === false;
               
               return (
                 <Card 
                   key={slotNumber} 
-                  className={`min-w-[280px] max-w-[320px] flex-shrink-0 transition-all duration-200 ${
+                  className={`w-full max-w-[400px] transition-all duration-200 ${
                     isSelected 
                       ? 'ring-2 ring-primary border-primary' 
                       : 'hover:shadow-md'
@@ -286,7 +254,7 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <CardTitle className="text-base">
-                      Slot {slot.slotNumber ?? 'Unknown'}
+                      Current Period
                     </CardTitle>
                     <Badge variant={(slot.isActive ?? false) ? "default" : "secondary"}>
                       {(slot.isActive ?? false) ? "Active" : "Upcoming"}
@@ -307,7 +275,7 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
                     )}
                     
                     <div className="text-sm text-muted-foreground">
-                      {slot.pointsIfCorrect || 0} pts
+                      {slot.points || 0} pts
                     </div>
                   </div>
                 </div>
@@ -317,9 +285,12 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
                  {/* Compact Slot Info */}
                  <div className="space-y-2 text-sm">
                    <div className="bg-muted p-2 rounded">
-                     <div className="text-xs text-muted-foreground mb-1">Time Window</div>
+                     <div className="text-xs text-muted-foreground mb-1">Period</div>
                      <div className="font-medium text-xs">
-                       {formatCESTTime(slot.start)} - {formatCESTTime(slot.end)}
+                       {slot.slotLabel || 'Current Period'}
+                     </div>
+                     <div className="text-xs text-muted-foreground mt-1">
+                       {slot.isFirstHalf ? 'First Half (Full Points)' : 'Second Half (1/3 Points)'}
                      </div>
                    </div>
 
@@ -336,52 +307,16 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
                    )}
                  </div>
 
-                                 {/* Collapsible Intervals Section */}
-                 {slot.intervals && Array.isArray(slot.intervals) && slot.intervals.length > 0 && (
-                   <div className="border rounded-lg">
-                     <button
-                       onClick={() => toggleSlotExpansion(slotNumber)}
-                       className="w-full p-2 flex items-center justify-between hover:bg-muted/50 transition-colors text-xs"
-                     >
-                       <span className="font-medium">
-                         Intervals ({slot.intervals.length})
-                       </span>
-                       <div className="flex items-center space-x-2">
-                         <span className="text-xs text-muted-foreground">
-                           {slot.intervals.reduce((sum, int) => sum + (int.points || 0), 0)} pts
-                         </span>
-                         {isExpanded ? (
-                           <ChevronDown className="h-3 w-3" />
-                         ) : (
-                           <ChevronRight className="h-3 w-3" />
-                         )}
-                       </div>
-                     </button>
-                     
-                     {isExpanded && (
-                       <div className="border-t bg-muted/30 p-2">
-                         <div className="text-xs text-muted-foreground mb-2">
-                           {slot.intervals.length} intervals:
-                         </div>
-                         <div className="grid grid-cols-2 gap-1">
-                           {slot.intervals.map((interval) => (
-                             <div 
-                               key={interval.intervalNumber}
-                               className="bg-background p-1 rounded text-xs border"
-                             >
-                               <div className="font-medium text-center text-primary">
-                                 {interval.points || 0} pts
-                               </div>
-                               <div className="text-center text-muted-foreground text-xs">
-                                 {interval.label || 'Unknown'}
-                               </div>
-                             </div>
-                           ))}
-                         </div>
-                       </div>
-                     )}
+                 {/* Simplified Points Info */}
+                 <div className="bg-primary/10 p-2 rounded">
+                   <div className="text-xs text-muted-foreground mb-1">Points Available</div>
+                   <div className="font-bold text-primary text-sm">
+                     {slot.points || 0} points
                    </div>
-                 )}
+                   <div className="text-xs text-muted-foreground">
+                     {slot.isFirstHalf ? 'Full points (first half)' : '1/3 points (second half)'}
+                   </div>
+                 </div>
 
                 {/* Action Button */}
                 <div className="flex justify-center">

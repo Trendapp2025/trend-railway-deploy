@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Search as SearchIcon } from 'lucide-react';
 import { Asset } from '@shared/schema';
-import AssetCard from '@/components/asset-card';
+import AssetsWithPrices from '@/components/assets-with-prices';
 import { useQuery } from '@tanstack/react-query';
 
 export default function AssetSearch() {
@@ -12,10 +12,17 @@ export default function AssetSearch() {
   const [searchResults, setSearchResults] = useState<Asset[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // Fetch all assets
-  const { data: assets, isLoading } = useQuery<Asset[]>({
-    queryKey: ['/api/assets'],
+  // Fetch all assets (unlimited)
+  const { data: assetsData, isLoading } = useQuery({
+    queryKey: ['/api/assets', 'unlimited'],
+    queryFn: async () => {
+      const response = await fetch(`/api/assets?page=1&limit=999999`);
+      const data = await response.json();
+      return data;
+    },
   });
+
+  const assets = assetsData?.assets || [];
 
   const handleSearch = () => {
     if (!assets || !searchQuery.trim()) {
@@ -104,11 +111,7 @@ export default function AssetSearch() {
               ? "No assets found matching your search" 
               : `Found ${searchResults.length} asset${searchResults.length !== 1 ? 's' : ''}`}
           </h3>
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {searchResults.map(asset => (
-              <AssetCard key={asset.id} asset={asset} />
-            ))}
-          </div>
+          <AssetsWithPrices assets={searchResults} />
         </div>
       )}
     </div>

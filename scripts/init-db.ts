@@ -3,7 +3,8 @@ import { initializeSlotConfigs } from '../server/slot-service';
 import { initializeDefaultAssets } from '../server/price-service';
 import dotenv from 'dotenv';
 
-dotenv.config();
+// Load env from parent folder where DATABASE_URL is defined
+dotenv.config({ path: '../.env' });
 
 async function initializeDatabase() {
   try {

@@ -25,25 +25,20 @@ interface PredictionFormProps {
 
 const predictionSchema = z.object({
   direction: z.enum(["up", "down"]),
-  duration: z.enum(["1h", "3h", "6h", "24h", "48h", "1w", "1m", "3m", "6m", "1y"]),
+  duration: z.enum(["short", "medium", "long"]),
 });
 
 type PredictionFormData = z.infer<typeof predictionSchema>;
 
 interface SlotInfo {
   slotNumber: number;
-  startTime: string;
-  endTime: string;
-  pointsIfCorrect: number;
-  penaltyIfWrong: number;
+  slotStart: string;
+  slotEnd: string;
+  slotLabel: string;
+  points: number;
+  isFirstHalf: boolean;
   isActive: boolean;
-  isValid: boolean; // true if current or future slot
-  timeRemaining?: number; // in milliseconds (matching backend)
-  lockStatus?: {
-    isLocked: boolean;
-    timeUntilStart: number;
-    timeUntilUnlock: number;
-  };
+  isValid: boolean;
 }
 
 interface SlotUpdate {
@@ -247,31 +242,17 @@ export default function PredictionForm({ assetId, assetSymbol, assetName, select
 
   const handleDurationChange = (duration: string) => {
     setSelectedDuration(duration);
-    form.setValue("duration", duration as "1h" | "3h" | "6h" | "24h" | "48h" | "1w" | "1m" | "3m" | "6m" | "1y");
+    form.setValue("duration", duration as "short" | "medium" | "long");
   };
 
   const getDurationLabel = (duration: string) => {
     switch (duration) {
-      case "1h":
-        return "1 Hour";
-      case "3h":
-        return "3 Hours";
-      case "6h":
-        return "6 Hours";
-      case "24h":
-        return "24 Hours";
-      case "48h":
-        return "48 Hours";
-      case "1w":
-        return "1 Week";
-      case "1m":
-        return "1 Month";
-      case "3m":
-        return "3 Months";
-      case "6m":
-        return "6 Months";
-      case "1y":
-        return "1 Year";
+      case "short":
+        return "Short (1 Week)";
+      case "medium":
+        return "Medium (1 Month)";
+      case "long":
+        return "Long (3 Months)";
       default:
         return duration;
     }
@@ -320,7 +301,7 @@ export default function PredictionForm({ assetId, assetSymbol, assetName, select
         <div className="space-y-3">
           <label className="text-sm font-medium">Duration</label>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-2">
-            {(["1h", "3h", "6h", "24h", "48h", "1w", "1m", "3m", "6m", "1y"] as const).map((duration) => (
+            {(["short", "medium", "long"] as const).map((duration) => (
               <Button
                 key={duration}
                 type="button"
@@ -534,21 +515,17 @@ export default function PredictionForm({ assetId, assetSymbol, assetName, select
                       {!isValidSlot && <span className="text-red-600">✕</span>}
                     </div>
                     <div className={`text-center mb-2 ${!isValidSlot ? "text-gray-400" : "text-gray-600"}`}>
-                      {slot.startTime || 'N/A'}-{slot.endTime || 'N/A'}
+                      {slot.slotLabel || 'N/A'}
                     </div>
                     <div className="text-center space-y-1">
                       <div>
                         <span className={`font-semibold ${!isValidSlot ? "text-gray-400" : "text-green-600"}`}>
-                          +{slot.pointsIfCorrect || 0}
+                          +{slot.points || 0}
                         </span>
                       </div>
-                      {slot.penaltyIfWrong && (
-                        <div>
-                          <span className={`text-xs ${!isValidSlot ? "text-gray-400" : "text-red-500"}`}>
-                            -{slot.penaltyIfWrong}
-                          </span>
-                        </div>
-                      )}
+                      <div className="text-xs text-muted-foreground">
+                        {slot.isFirstHalf ? "First Half" : "Second Half"}
+                      </div>
                       {isCurrentSlot && slot.timeRemaining && (
                         <div className="text-xs text-green-600 font-mono">
                           {formatTimeRemaining(slot.timeRemaining)}

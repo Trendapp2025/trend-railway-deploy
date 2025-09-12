@@ -1,3 +1,4 @@
+
 import { pgTable, text, serial, integer, boolean, timestamp, decimal, pgEnum, uuid, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -8,7 +9,7 @@ export const assetTypeEnum = pgEnum("asset_type", ["crypto", "stock", "forex"]);
 export const predictionDirectionEnum = pgEnum("prediction_direction", ["up", "down"]);
 export const predictionStatusEnum = pgEnum("prediction_status", ["active", "expired", "evaluated"]);
 export const predictionResultEnum = pgEnum("prediction_result", ["pending", "correct", "incorrect"]);
-export const durationEnum = pgEnum("duration", ["1h", "3h", "6h", "24h", "48h", "1w", "1m", "3m", "6m", "1y"]);
+export const durationEnum = pgEnum("duration", ["short", "medium", "long"]);
 
 // Users table
 export const users = pgTable("users", {

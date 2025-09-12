@@ -22,6 +22,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
+        // Align with backend dev port from package.json "dev" script
         target: 'http://localhost:3002',
         changeOrigin: true,
         secure: false,

@@ -7,11 +7,25 @@ import { sql } from 'drizzle-orm';
 
 // Use the slot service functions instead of duplicating logic
 
+// Map new duration values to old database values for backward compatibility
+function mapDurationToLegacy(duration: 'short' | 'medium' | 'long'): '1h' | '3h' | '6h' | '24h' | '48h' | '1w' | '1m' | '3m' | '6m' | '1y' {
+  switch (duration) {
+    case 'short':
+      return '1w'; // 1 week
+    case 'medium':
+      return '1m'; // 1 month
+    case 'long':
+      return '3m'; // 3 months
+    default:
+      return '1w';
+  }
+}
+
 export interface CreatePredictionInput {
   userId: string;
   assetSymbol: string;
   direction: 'up' | 'down';
-  duration: '1h' | '3h' | '6h' | '24h' | '48h' | '1w' | '1m' | '3m' | '6m' | '1y';
+  duration: 'short' | 'medium' | 'long';
   slotNumber: number;
 }
 
@@ -91,28 +105,30 @@ export async function createPrediction(input: CreatePredictionInput) {
     }
   });
   
-  // Instead of strict slot number validation, check if the slot is reasonable
-  // The UI already filters valid slots, so we just need to ensure basic sanity
-  if (slotNumber < 1 || slotNumber > 100) { // Reasonable upper limit
-    throw new Error('Invalid slot number provided');
+  // In simplified system, only slot 1 is valid
+  if (slotNumber !== 1) {
+    throw new Error('Invalid slot number. Only slot 1 is available in the simplified system');
   }
   
-  // Check if the slot is not too far in the past (basic validation)
+  // Check if slot is still active (not expired) - for simplified slot system
   const now = new Date();
   const slotStartTime = selectedSlot.slotStart.toJSDate();
-  const timeDiff = slotStartTime.getTime() - now.getTime();
-  const maxPastTime = 24 * 60 * 60 * 1000; // 24 hours in the past
+  const slotEndTime = selectedSlot.slotEnd.toJSDate();
   
   console.log('Time validation:', {
     now: now.toISOString(),
     slotStartTime: slotStartTime.toISOString(),
-    timeDiff,
-    maxPastTime,
-    isTooFarInPast: timeDiff < -maxPastTime
+    slotEndTime: slotEndTime.toISOString(),
+    isSlotActive: now >= slotStartTime && now <= slotEndTime
   });
   
-  if (timeDiff < -maxPastTime) {
-    throw new Error('Cannot create predictions for slots that are too far in the past');
+  // For simplified slot system, only check if slot is still active (not expired)
+  if (now < slotStartTime) {
+    throw new Error('Cannot create predictions for slots that have not started yet');
+  }
+  
+  if (now > slotEndTime) {
+    throw new Error('Cannot create predictions for slots that have already ended');
   }
   
   // Check if user already has a prediction for this asset, duration, and slot
@@ -120,7 +136,7 @@ export async function createPrediction(input: CreatePredictionInput) {
     where: and(
       eq(predictions.userId, userId),
       eq(predictions.assetId, asset.id),
-      eq(predictions.duration, duration),
+      eq(predictions.duration, mapDurationToLegacy(duration)), // Map duration for query
       eq(predictions.slotNumber, slotNumber),
       eq(predictions.slotStart, selectedSlot.slotStart.toJSDate())
     ),
@@ -157,7 +173,7 @@ export async function createPrediction(input: CreatePredictionInput) {
     userId,
     assetId: asset.id,
     direction,
-    duration,
+    duration: mapDurationToLegacy(duration), // Map new duration to legacy database value
     slotNumber: slotNumber,
     slotStart: selectedSlot.slotStart.toJSDate(),
     slotEnd: selectedSlot.slotEnd.toJSDate(),
@@ -435,15 +451,17 @@ export async function evaluatePrediction(predictionId: string) {
       result = 'correct';
     }
 
-    // Calculate points based on slot timing and result
+    // Calculate points based on new simplified system
     if (result === 'correct') {
-      // Import slot service to get points calculation
-      const { getPointsForSlot } = await import('./slot-service');
-      pointsAwarded = getPointsForSlot(prediction.duration as any, prediction.slotNumber);
+      // Use the new points calculation based on when prediction was made
+      const { getPointsForPrediction } = await import('./lib/slots.js');
+      const predictionTime = prediction.timestampCreated;
+      pointsAwarded = getPointsForPrediction(prediction.duration as any, predictionTime);
     } else {
       // Penalty for incorrect prediction (50% of slot points, minimum -1)
-      const { getPointsForSlot } = await import('./slot-service');
-      const slotPoints = getPointsForSlot(prediction.duration as any, prediction.slotNumber);
+      const { getPointsForPrediction } = await import('./lib/slots.js');
+      const predictionTime = prediction.timestampCreated;
+      const slotPoints = getPointsForPrediction(prediction.duration as any, predictionTime);
       pointsAwarded = Math.max(-1, Math.floor(-slotPoints / 2));
     }
 

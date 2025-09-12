@@ -1,179 +1,134 @@
 import { DateTime } from 'luxon';
 
-export type DurationKey = '1h' | '3h' | '6h' | '24h' | '48h' | '1w' | '1m' | '3m' | '6m' | '1y';
+// New simplified duration system
+export type DurationKey = 'short' | 'medium' | 'long';
 
 export interface SlotInfo {
   slotNumber: number;
   slotStart: DateTime;
   slotEnd: DateTime;
   slotLabel: string;
+  points: number;
+  isFirstHalf: boolean;
 }
 
-// Points configuration matching the new specification
-const SLOT_POINTS: Record<DurationKey, number[]> = {
-  '1h': [10, 5, 2, 1],
-  '3h': [20, 15, 10, 5, 2, 1],
-  '6h': [30, 20, 15, 10, 5, 1],
-  '24h': [40, 30, 20, 15, 10, 5, 2, 1],
-  '48h': [50, 40, 30, 20, 15, 10, 5, 1],
-  '1w': [60, 50, 40, 30, 20, 10, 5],
-  '1m': [80, 60, 40, 20],
-  '3m': [100, 60, 30],
-  '6m': [120, 100, 80, 60, 40, 20],
-  '1y': [150, 100, 50, 20]
+// Points configuration for new simplified system
+const SLOT_POINTS: Record<DurationKey, { firstHalf: number; secondHalf: number }> = {
+  'short': { firstHalf: 10, secondHalf: 3 },   // 1 week: 10 / 3
+  'medium': { firstHalf: 15, secondHalf: 5 },  // 1 month: 15 / 5
+  'long': { firstHalf: 20, secondHalf: 7 }     // 3 months: 20 / 7
 };
 
 export function formatSlotLabel(startTime: string, endTime: string): string {
   return startTime === endTime ? startTime : `${startTime} - ${endTime}`;
 }
 
-function getIntervals(duration: DurationKey): { count: number; minutesPerInterval: number } {
+// Get the current period start and end for a duration in CEST
+function getCurrentPeriod(duration: DurationKey): { start: DateTime; end: DateTime } {
+  const now = DateTime.now().setZone('Europe/Berlin');
+  
   switch (duration) {
-    case '1h':
-      return { count: 4, minutesPerInterval: 15 }; // 4×15 min
-    case '3h':
-      return { count: 6, minutesPerInterval: 30 }; // 6×30 min
-    case '6h':
-      return { count: 6, minutesPerInterval: 60 }; // 6×1 hour
-    case '24h':
-      return { count: 8, minutesPerInterval: 180 }; // 8×3 hours
-    case '48h':
-      return { count: 8, minutesPerInterval: 360 }; // 8×6 hours
-    case '1w':
-      return { count: 7, minutesPerInterval: 1440 }; // 7×1 day
-    case '1m':
-      return { count: 4, minutesPerInterval: 10080 }; // 4×1 week (10080 = 7*1440)
-    case '3m':
-      return { count: 3, minutesPerInterval: 43200 }; // 3×1 month (43200 = 30*1440)
-    case '6m':
-      return { count: 6, minutesPerInterval: 43200 }; // 6×1 month (43200 = 30*1440)
-    case '1y':
-      return { count: 4, minutesPerInterval: 129600 }; // 4×3 months (129600 = 90*1440)
-  }
-}
-
-function startOfLogicalPeriod(now: DateTime, duration: DurationKey): DateTime {
-  switch (duration) {
-    case '1h':
-    case '3h':
-    case '6h':
-    case '24h':
-    case '48h':
-      return now.startOf('day');
-    case '1w':
-      return now.startOf('week');
-    case '1m':
-      return now.startOf('month');
-    case '3m':
-    case '6m':
-      // Start at beginning of current quarter/half-year
+    case 'short': {
+      // Monday → Sunday (current week)
+      const dayOfWeek = now.weekday; // Monday = 1, Sunday = 7
+      const daysToMonday = dayOfWeek === 1 ? 0 : 1 - dayOfWeek;
+      const start = now.plus({ days: daysToMonday }).startOf('day');
+      const end = start.plus({ days: 6 }).endOf('day');
+      return { start, end };
+    }
+    case 'medium': {
+      // 1st → last day of current month
+      const start = now.startOf('month');
+      const end = now.endOf('month');
+      return { start, end };
+    }
+    case 'long': {
+      // Current quarter (Jan–Mar, Apr–Jun, Jul–Sep, Oct–Dec)
       const quarter = Math.floor((now.month - 1) / 3);
-      return now.set({ month: quarter * 3 + 1, day: 1 }).startOf('day');
-    case '1y':
-      return now.startOf('year');
+      const start = now.set({ month: quarter * 3 + 1, day: 1 }).startOf('day');
+      const end = start.plus({ months: 3 }).minus({ days: 1 }).endOf('day');
+      return { start, end };
+    }
+    default:
+      throw new Error(`Unknown duration: ${duration}`);
   }
 }
 
-export function getSlotForDate(date: Date | string, duration: DurationKey, zone: string = 'Europe/Berlin'): SlotInfo {
-  const now = typeof date === 'string' ? DateTime.fromISO(date, { zone }) : DateTime.fromJSDate(date, { zone });
-  const { count, minutesPerInterval } = getIntervals(duration);
-  const periodStart = startOfLogicalPeriod(now, duration);
-  const minutesSinceStart = now.diff(periodStart, 'minutes').minutes;
-  const rawIndex = Math.floor(minutesSinceStart / minutesPerInterval);
-  const slotIndex = Math.min(Math.max(rawIndex, 0), count - 1);
+// Check if a prediction is in the first half of the period
+function isFirstHalf(predictionTime: DateTime, duration: DurationKey): boolean {
+  const { start, end } = getCurrentPeriod(duration);
+  const totalDuration = end.diff(start, 'milliseconds').milliseconds;
+  const timeFromStart = predictionTime.diff(start, 'milliseconds').milliseconds;
+  return timeFromStart <= totalDuration / 2;
+}
 
-  const slotStart = periodStart.plus({ minutes: slotIndex * minutesPerInterval });
-  const slotEnd = slotStart.plus({ minutes: minutesPerInterval }).minus({ milliseconds: 1 });
+// Get points for a prediction based on when it was made
+export function getPointsForPrediction(duration: DurationKey, predictionTime: DateTime): number {
+  const isFirst = isFirstHalf(predictionTime, duration);
+  const points = SLOT_POINTS[duration];
+  return isFirst ? points.firstHalf : points.secondHalf;
+}
 
-  const startLabel = slotStart.toFormat('HH:mm');
-  const endLabel = slotEnd.plus({ milliseconds: 1 }).toFormat('HH:mm');
-
+// Get current active slot for a duration (simplified - only one slot per duration)
+export function getCurrentActiveSlot(duration: DurationKey, zone: string = 'Europe/Berlin'): SlotInfo {
+  const now = DateTime.now().setZone(zone);
+  const { start, end } = getCurrentPeriod(duration);
+  const isFirst = isFirstHalf(now, duration);
+  const points = getPointsForPrediction(duration, now);
+  
   return {
-    slotNumber: slotIndex + 1,
-    slotStart,
-    slotEnd,
-    slotLabel: formatSlotLabel(startLabel, endLabel),
+    slotNumber: 1, // Always slot 1 for simplified system
+    slotStart: start,
+    slotEnd: end,
+    slotLabel: `${start.toFormat('MMM dd')} - ${end.toFormat('MMM dd, yyyy')}`,
+    points,
+    isFirstHalf: isFirst,
   };
 }
 
-export function getCurrentActiveSlot(duration: DurationKey, zone: string = 'Europe/Berlin'): SlotInfo {
-  return getSlotForDate(new Date(), duration, zone);
-}
-
+// Check if a date is within the current active period
 export function isWithinActiveSlot(date: Date | string, duration: DurationKey, zone: string = 'Europe/Berlin'): boolean {
   const dt = typeof date === 'string' ? DateTime.fromISO(date, { zone }) : DateTime.fromJSDate(date, { zone });
-  const slot = getSlotForDate(dt.toJSDate(), duration, zone);
-  return dt >= slot.slotStart && dt <= slot.slotEnd;
+  const { start, end } = getCurrentPeriod(duration);
+  return dt >= start && dt <= end;
 }
 
+// Get all slots for a duration (simplified - returns current period only)
 export function getAllSlotsForDuration(
   startDate: Date | string,
   endDate: Date | string,
   duration: DurationKey,
   zone: string = 'Europe/Berlin'
 ): SlotInfo[] {
-  const start = typeof startDate === 'string' ? DateTime.fromISO(startDate, { zone }) : DateTime.fromJSDate(startDate, { zone });
-  const end = typeof endDate === 'string' ? DateTime.fromISO(endDate, { zone }) : DateTime.fromJSDate(endDate, { zone });
-  const { count, minutesPerInterval } = getIntervals(duration);
-  const periodStart = startOfLogicalPeriod(start, duration);
-  const slots: SlotInfo[] = [];
-  for (let i = 0; i < count; i++) {
-    const s = periodStart.plus({ minutes: i * minutesPerInterval });
-    const e = s.plus({ minutes: minutesPerInterval }).minus({ milliseconds: 1 });
-    if (e < start || s > end) continue;
-    slots.push({
-      slotNumber: i + 1,
-      slotStart: s,
-      slotEnd: e,
-      slotLabel: formatSlotLabel(s.toFormat('HH:mm'), e.plus({ milliseconds: 1 }).toFormat('HH:mm')),
-    });
-  }
-  return slots;
+  // For simplified system, just return the current active slot
+  return [getCurrentActiveSlot(duration, zone)];
 }
 
-// Get points for a specific slot in a duration
-export function getPointsForSlot(duration: DurationKey, slotNumber: number): number {
-  const points = SLOT_POINTS[duration];
-  if (slotNumber < 1 || slotNumber > points.length) {
-    throw new Error(`Invalid slot number ${slotNumber} for duration ${duration}`);
-  }
-  return points[slotNumber - 1]; // Convert to 0-based index
-}
-
-// Check if a slot is valid (current or future only)
+// Check if a slot is valid (simplified - only current slot is valid)
 export function isSlotValid(duration: DurationKey, slotNumber: number, targetTime?: Date | string, zone: string = 'Europe/Berlin'): boolean {
-  const now = targetTime ? 
-    (typeof targetTime === 'string' ? DateTime.fromISO(targetTime, { zone }) : DateTime.fromJSDate(targetTime, { zone })) :
-    DateTime.now().setZone(zone);
-  
-  const currentSlot = getSlotForDate(now.toJSDate(), duration, zone);
-  
-  // Only allow current slot or future slots
-  return slotNumber >= currentSlot.slotNumber;
+  // In simplified system, only slot 1 (current period) is valid
+  return slotNumber === 1 && isWithinActiveSlot(targetTime || new Date(), duration, zone);
 }
 
-// Get all valid slots for selection (current + future)
+// Get all valid slots for selection (simplified - only current slot)
 export function getValidSlotsForDuration(duration: DurationKey, zone: string = 'Europe/Berlin'): SlotInfo[] {
-  const now = DateTime.now().setZone(zone);
-  const currentSlot = getSlotForDate(now.toJSDate(), duration, zone);
-  const { count } = getIntervals(duration);
-  const periodStart = startOfLogicalPeriod(now, duration);
+  const slot = getCurrentActiveSlot(duration, zone);
+  return isWithinActiveSlot(new Date(), duration, zone) ? [slot] : [];
+}
+
+// Get slot for a specific date (simplified)
+export function getSlotForDate(date: Date | string, duration: DurationKey, zone: string = 'Europe/Berlin'): SlotInfo {
+  const dt = typeof date === 'string' ? DateTime.fromISO(date, { zone }) : DateTime.fromJSDate(date, { zone });
+  const { start, end } = getCurrentPeriod(duration);
+  const isFirst = isFirstHalf(dt, duration);
+  const points = getPointsForPrediction(duration, dt);
   
-  const slots: SlotInfo[] = [];
-  
-  // Start from current slot onwards
-  for (let i = currentSlot.slotNumber - 1; i < count; i++) {
-    const { minutesPerInterval } = getIntervals(duration);
-    const s = periodStart.plus({ minutes: i * minutesPerInterval });
-    const e = s.plus({ minutes: minutesPerInterval }).minus({ milliseconds: 1 });
-    
-    slots.push({
-      slotNumber: i + 1,
-      slotStart: s,
-      slotEnd: e,
-      slotLabel: formatSlotLabel(s.toFormat('HH:mm'), e.plus({ milliseconds: 1 }).toFormat('HH:mm')),
-    });
-  }
-  
-  return slots;
+  return {
+    slotNumber: 1,
+    slotStart: start,
+    slotEnd: end,
+    slotLabel: `${start.toFormat('MMM dd')} - ${end.toFormat('MMM dd, yyyy')}`,
+    points,
+    isFirstHalf: isFirst,
+  };
 }

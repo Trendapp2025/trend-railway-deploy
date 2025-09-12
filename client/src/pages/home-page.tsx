@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useLanguage } from "@/hooks/use-language";
 import AppHeader from "@/components/app-header";
-import AssetList from "@/components/asset-list";
+import AssetsWithPrices from "@/components/assets-with-prices";
 import AssetSearch from "@/components/asset-search";
 import SuggestAssetForm from "@/components/suggest-asset-form";
 import ShareApp from "@/components/share-app";
@@ -10,11 +10,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Asset } from "@shared/schema";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { TrendingUp, TrendingDown, BarChart3, Coins, LineChart, Search, Plus, ListPlus, Globe, Trophy, DollarSign, Bitcoin } from "lucide-react";
 import { Link } from "wouter";
 import AssetCard from "@/components/asset-card";
 import SentimentSummaryChart from "@/components/sentiment-summary-chart";
-import { Button } from "@/components/ui/button";
+import GlobalSentimentCard from "@/components/global-sentiment-card";
 import { LanguageSelectorCard } from "@/components/language-selector";
 import {
   Dialog,
@@ -30,15 +31,45 @@ export default function HomePage() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const [suggestDialogOpen, setSuggestDialogOpen] = useState(false);
+  
+  // No pagination needed - show all assets with prices
 
-  const { data: assets, isLoading } = useQuery<Asset[]>({
-    queryKey: ["/api/assets"],
+  // Fetch all crypto assets (unlimited)
+  const { data: cryptoData, isLoading: cryptoLoading } = useQuery({
+    queryKey: ["/api/assets", "crypto", "unlimited"],
+    queryFn: async () => {
+      const response = await fetch(`/api/assets?type=crypto&page=1&limit=999999`);
+      const data = await response.json();
+      return data;
+    },
   });
 
-  // Filter assets by type
-  const cryptoAssets = assets?.filter(asset => asset.type === "crypto") || [];
-  const stockAssets = assets?.filter(asset => asset.type === "stock") || [];
-  const forexAssets = assets?.filter(asset => asset.type === "forex") || [];
+  // Fetch all stock assets (unlimited)
+  const { data: stockData, isLoading: stockLoading } = useQuery({
+    queryKey: ["/api/assets", "stock", "unlimited"],
+    queryFn: async () => {
+      const response = await fetch(`/api/assets?type=stock&page=1&limit=999999`);
+      const data = await response.json();
+      return data;
+    },
+  });
+
+  // Fetch all forex assets (unlimited)
+  const { data: forexData, isLoading: forexLoading } = useQuery({
+    queryKey: ["/api/assets", "forex", "unlimited"],
+    queryFn: async () => {
+      const response = await fetch(`/api/assets?type=forex&page=1&limit=999999`);
+      const data = await response.json();
+      return data;
+    },
+  });
+
+  // Extract assets from data
+  const cryptoAssets = cryptoData?.assets || [];
+  const stockAssets = stockData?.assets || [];
+  const forexAssets = forexData?.assets || [];
+
+  const isLoading = cryptoLoading || stockLoading || forexLoading;
 
 
 
@@ -109,48 +140,9 @@ export default function HomePage() {
           </Card>
         </section>
 
-        {/* Advanced Charts Section */}
+        {/* Global App Sentiment Section */}
         <section className="mb-8">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <BarChart3 className="h-6 w-6 mr-3 text-primary" />
-                Advanced Trading Charts
-              </CardTitle>
-              <CardDescription>
-                Professional charts for stocks, forex, and crypto with multiple timeframes
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-muted/50 rounded-lg border">
-                    <div className="text-2xl font-bold text-primary mb-2">📈</div>
-                    <h3 className="font-semibold mb-2">Stocks</h3>
-                    <p className="text-sm text-muted-foreground">NASDAQ, NYSE, TSX</p>
-                  </div>
-                  <div className="text-center p-4 bg-muted/50 rounded-lg border">
-                    <div className="text-2xl font-bold text-primary mb-2">💱</div>
-                    <h3 className="font-semibold mb-2">Forex</h3>
-                    <p className="text-sm text-muted-foreground">OANDA, FXCM, FX_IDC</p>
-                  </div>
-                  <div className="text-center p-4 bg-muted/50 rounded-lg border">
-                    <div className="text-2xl font-bold text-primary mb-2">₿</div>
-                    <h3 className="font-semibold mb-2">Crypto</h3>
-                    <p className="text-sm text-muted-foreground">Binance, Coinbase, Kraken</p>
-                  </div>
-                </div>
-                <div className="text-center">
-                  <Button asChild size="lg">
-                    <Link href="/chart">
-                      <BarChart3 className="h-5 w-5 mr-2" />
-                      Open Advanced Charts
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <GlobalSentimentCard />
         </section>
 
 
@@ -259,11 +251,7 @@ export default function HomePage() {
               ))}
             </div>
           ) : cryptoAssets.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {cryptoAssets.map((asset) => (
-                <AssetCard key={asset.id} asset={asset} />
-              ))}
-            </div>
+            <AssetsWithPrices assets={cryptoAssets} />
           ) : (
             <div className="text-center py-10 text-muted-foreground">
               {t("asset.no_crypto")}
@@ -292,11 +280,7 @@ export default function HomePage() {
               ))}
             </div>
           ) : stockAssets.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {stockAssets.map((asset) => (
-                <AssetCard key={asset.id} asset={asset} />
-              ))}
-            </div>
+            <AssetsWithPrices assets={stockAssets} />
           ) : (
             <div className="text-center py-10 text-muted-foreground">
               {t("asset.no_stock")}
@@ -325,11 +309,7 @@ export default function HomePage() {
               ))}
             </div>
           ) : forexAssets.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {forexAssets.map((asset) => (
-                <AssetCard key={asset.id} asset={asset} />
-              ))}
-            </div>
+            <AssetsWithPrices assets={forexAssets} />
           ) : (
             <div className="text-center py-10 text-muted-foreground">
               {t("asset.no_forex") || "No forex pairs available"}

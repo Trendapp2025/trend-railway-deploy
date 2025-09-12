@@ -71,6 +71,7 @@ app.use(express.static('dist/public'));
 app.get('*', (req, res) => {
   // Don't serve React app for API routes
   if (req.path.startsWith('/api/')) {
+    console.warn(`API 404 - unmatched route: ${req.method} ${req.path}`);
     return res.status(404).json({ error: 'API endpoint not found' });
   }
   res.sendFile('dist/public/index.html', { root: '.' });

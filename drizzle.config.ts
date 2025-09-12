@@ -1,8 +1,11 @@
+/// <reference types="node" />
 import { defineConfig } from "drizzle-kit";
-
+import dotenv from 'dotenv';
+dotenv.config({ path: '../.env' });
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL, ensure the database is provisioned");
 }
+
 
 // Modifica l'URL per gestire correttamente la password e l'IPv6
 const dbUrl = new URL(process.env.DATABASE_URL);

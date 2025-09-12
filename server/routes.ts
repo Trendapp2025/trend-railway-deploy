@@ -2,9 +2,10 @@ import express from 'express';
 import { z } from 'zod';
 import { db } from './db';
 import { users, emailVerifications, predictions, assets, userProfiles, slotConfigs } from '../shared/schema';
-import { eq, and, sql, gte, lte, inArray, desc } from 'drizzle-orm';
+import { eq, and, sql, gte, lte, inArray, desc, gt } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
 import WebSocketService from './websocket-service';
+import { getAssetBySymbol, getCurrentPrice } from './price-service';
 
 // Extend Express Request type to include user
 declare global {
@@ -145,6 +146,163 @@ let wsService: WebSocketService | null = null;
 // Function to set WebSocket service instance
 export function setWebSocketService(service: WebSocketService) {
   wsService = service;
+}
+
+// Helper to compute global sentiment across all assets for a duration
+async function computeGlobalSentimentResponse(duration: string) {
+  let slots: Array<{ slotNumber: number; slotLabel: string; up: number; down: number; total: number; slotStart?: Date; slotEnd?: Date }> = [];
+
+  // Strategy 1: aggregate by time window for new duration system
+  try {
+    // Map new duration to time window
+    const now = new Date();
+    const windowMsMap: Record<string, number> = {
+      'short': 7 * 24 * 60 * 60 * 1000,   // 1 week
+      'medium': 30 * 24 * 60 * 60 * 1000, // 1 month
+      'long': 90 * 24 * 60 * 60 * 1000,   // 3 months
+    };
+    const windowMs = windowMsMap[duration] || windowMsMap['short'];
+    const start = new Date(now.getTime() - windowMs);
+
+    // Use raw SQL to avoid Drizzle ORM issues, same approach as analyst consensus
+    const sentimentResult = await db.execute(sql`
+      SELECT direction, COUNT(*) as count
+      FROM predictions 
+      WHERE created_at >= ${start} 
+      AND created_at <= ${now}
+      AND status IN ('active', 'evaluated')
+      GROUP BY direction
+    `);
+    
+    const sentimentData = sentimentResult.rows || [];
+
+    if (sentimentData.length > 0) {
+      // For simplified slot system, we only have one slot per duration
+      let up = 0;
+      let down = 0;
+      
+      for (const row of sentimentData) {
+        if (row.direction === 'up') {
+          up = parseInt(row.count.toString());
+        } else if (row.direction === 'down') {
+          down = parseInt(row.count.toString());
+        }
+      }
+
+      slots = [{
+        slotNumber: 1,
+        slotLabel: 'Current Period',
+        up,
+        down,
+        total: up + down,
+        slotStart: start,
+        slotEnd: now,
+      }];
+    }
+  } catch (dbError) {
+    console.warn('Global sentiment DB query (by duration/slot) failed.', dbError);
+  }
+
+  // Strategy 2: if no rows (e.g., users used other durations), aggregate by timestamp window across ALL durations
+  if (slots.length === 0) {
+    // Map requested duration to a time window and slot layout
+    const now = new Date();
+    const windowMsMap: Record<string, number> = {
+      'short': 7 * 24 * 60 * 60 * 1000,   // 1 week
+      'medium': 30 * 24 * 60 * 60 * 1000, // 1 month
+      'long': 90 * 24 * 60 * 60 * 1000,   // 3 months
+      // Legacy durations for backward compatibility
+      '1h': 60 * 60 * 1000,
+      '3h': 3 * 60 * 60 * 1000,
+      '6h': 6 * 60 * 60 * 1000,
+      '24h': 24 * 60 * 60 * 1000,
+      '48h': 48 * 60 * 60 * 1000,
+      '1w': 7 * 24 * 60 * 60 * 1000,
+      '1m': 30 * 24 * 60 * 60 * 1000,
+      '3m': 90 * 24 * 60 * 60 * 1000,
+      '6m': 180 * 24 * 60 * 60 * 1000,
+      '1y': 365 * 24 * 60 * 60 * 1000,
+    };
+    const windowMs = windowMsMap[duration] || windowMsMap['short'];
+    const start = new Date(now.getTime() - windowMs);
+
+    // Determine slot count using luxon helper and build slot metadata
+    const luxonSlots = getAllSlotsLuxon(start.toISOString(), now.toISOString(), duration as any);
+    const count = Math.max(1, luxonSlots.length);
+    const segmentMs = Math.max(1, Math.floor(windowMs / count));
+    const slotAggArr: { up: number; down: number; total: number; slotStart: Date; slotEnd: Date }[] = [];
+    for (let i = 0; i < count; i++) {
+      const s = new Date(start.getTime() + i * segmentMs);
+      const e = i === count - 1 ? now : new Date(start.getTime() + (i + 1) * segmentMs);
+      slotAggArr.push({ up: 0, down: 0, total: 0, slotStart: s, slotEnd: e });
+    }
+
+    // Pull predictions in the window regardless of configured duration
+    let windowPredictions = await db.query.predictions.findMany({
+      where: and(
+        gte(predictions.timestampCreated, start),
+        lte(predictions.timestampCreated, now)
+      ),
+    });
+
+    // Fallback to raw SQL in case the adapter mishandles timestamp filters
+    if (!windowPredictions || windowPredictions.length === 0) {
+      try {
+        const raw = await db.execute(sql`select direction, timestamp_created as "timestampCreated", created_at as "createdAt" from predictions where timestamp_created >= ${start} and timestamp_created <= ${now}`);
+        // @ts-ignore drizzle returns rows on .rows for pg
+        windowPredictions = (raw.rows || raw) as any[];
+      } catch (e) {
+        console.warn('Global sentiment raw fallback query failed:', e);
+      }
+    }
+
+    console.log('Global sentiment window:', { duration, start, now, buckets: count, predictionsFound: windowPredictions?.length || 0 });
+
+    // Assign predictions to buckets by timestamp position (robust against TZ and boundary mismatches)
+    for (const p of windowPredictions) {
+      const ts = (p.timestampCreated || p.createdAt || now).getTime();
+      let idx = Math.floor((ts - start.getTime()) / segmentMs);
+      if (idx < 0) idx = 0; if (idx >= count) idx = count - 1;
+      if (p.direction === 'up') slotAggArr[idx].up += 1; else slotAggArr[idx].down += 1;
+      slotAggArr[idx].total = slotAggArr[idx].up + slotAggArr[idx].down;
+    }
+
+    slots = slotAggArr.map((s, i) => ({
+      slotNumber: i + 1,
+      slotLabel: `Slot ${i + 1}`,
+      up: s.up,
+      down: s.down,
+      total: s.total,
+      slotStart: s.slotStart,
+      slotEnd: s.slotEnd,
+    }));
+  }
+
+  const totalUp = slots.reduce((sum, s) => sum + s.up, 0);
+  const totalDown = slots.reduce((sum, s) => sum + s.down, 0);
+  const totalPredictions = totalUp + totalDown;
+  const upPercentage = totalPredictions > 0 ? Math.round((totalUp / totalPredictions) * 100) : 0;
+  const downPercentage = totalPredictions > 0 ? Math.round((totalDown / totalPredictions) * 100) : 0;
+
+  let overallSentiment: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+  if (totalPredictions > 0) {
+    if (upPercentage > downPercentage) overallSentiment = 'bullish';
+    else if (downPercentage > upPercentage) overallSentiment = 'bearish';
+  }
+
+  return {
+    duration,
+    slots,
+    summary: {
+      totalPredictions,
+      totalUp,
+      totalDown,
+      upPercentage,
+      downPercentage,
+      overallSentiment,
+    },
+    timestamp: new Date().toISOString(),
+  };
 }
 
 // Admin middleware defined later; keep routes that need it after its declaration.
@@ -1062,9 +1220,49 @@ router.get('/users/:userId/predictions', authMiddleware, async (req, res) => {
 // Get sentiment data
 router.get('/sentiment/:assetSymbol', async (req, res) => {
   try {
-    const { duration = '24h' } = req.query;
+    const { duration = 'short' } = req.query;
     const assetSymbol = decodeURIComponent(req.params.assetSymbol);
     console.log(`API: Getting sentiment data for ${assetSymbol} with duration ${duration}`);
+    // Handle global alias here to avoid 500 from asset lookup
+    if (assetSymbol.toLowerCase() === 'global') {
+      const d = (duration as string) || 'short';
+      const validDurations = ['short', 'medium', 'long'];
+      if (!validDurations.includes(d)) {
+        return res.status(400).json({ error: 'Invalid duration. Must be short, medium, or long' });
+      }
+      try {
+        const response = await computeGlobalSentimentResponse(d);
+        return res.json(response);
+      } catch (err) {
+        console.error('Global sentiment via /sentiment/:assetSymbol handler failed:', err);
+        // Safe fallback
+        const now = new Date();
+        const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+        const luxonSlots = getAllSlotsLuxon(oneHourAgo.toISOString(), now.toISOString(), d as any);
+        const slots = luxonSlots.map((s) => ({
+          slotNumber: s.slotNumber,
+          slotLabel: s.slotLabel,
+          up: 0,
+          down: 0,
+          total: 0,
+          slotStart: s.slotStart.toJSDate(),
+          slotEnd: s.slotEnd.toJSDate(),
+        }));
+        return res.json({
+          duration: d,
+          slots,
+          summary: {
+            totalPredictions: 0,
+            totalUp: 0,
+            totalDown: 0,
+            upPercentage: 0,
+            downPercentage: 0,
+            overallSentiment: 'neutral',
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
     
     // Log the query parameters
     console.log(`API: Query parameters:`, req.query);
@@ -1094,10 +1292,116 @@ router.get('/sentiment/:assetSymbol', async (req, res) => {
   }
 });
 
+// ===== GLOBAL TOP ASSETS =====
+// GET /api/sentiment/global/top-assets?period=1w|1m|3m
+router.get('/sentiment/global/top-assets', async (req, res) => {
+  try {
+    const period = (req.query.period as string) || '1w';
+    const valid = ['1w', '1m', '3m'];
+    if (!valid.includes(period)) return res.status(400).json({ error: 'Invalid period' });
+
+    // Use CEST timezone for calendar periods
+    const now = new Date();
+    const cestNow = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Berlin"}));
+    
+    let start: Date;
+    
+    if (period === '1w') {
+      // Short: Monday → Sunday, CEST timezone
+      const dayOfWeek = cestNow.getDay();
+      const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday = 0, so 6 days back to Monday
+      start = new Date(cestNow);
+      start.setDate(cestNow.getDate() - daysToMonday);
+      start.setHours(0, 0, 0, 0);
+    } else if (period === '1m') {
+      // Medium: 1st day → last day of the month, European calendar, CEST timezone
+      start = new Date(cestNow.getFullYear(), cestNow.getMonth(), 1);
+    } else if (period === '3m') {
+      // Long: quarters (Jan–Mar, Apr–Jun, Jul–Sep, Oct–Dec), CEST timezone
+      const quarter = Math.floor(cestNow.getMonth() / 3);
+      start = new Date(cestNow.getFullYear(), quarter * 3, 1);
+    } else {
+      start = new Date(cestNow.getTime() - 7*24*60*60*1000); // fallback
+    }
+
+    // Use CEST time for end of window as well
+    const end = new Date(cestNow);
+    if (period === '1w') {
+      // End of current week (Sunday 23:59:59 CEST)
+      const dayOfWeek = cestNow.getDay();
+      const daysToSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+      end.setDate(cestNow.getDate() + daysToSunday);
+      end.setHours(23, 59, 59, 999);
+    } else if (period === '1m') {
+      // End of current month (last day 23:59:59 CEST)
+      end.setMonth(cestNow.getMonth() + 1, 0);
+      end.setHours(23, 59, 59, 999);
+    } else if (period === '3m') {
+      // End of current quarter (last day of quarter 23:59:59 CEST)
+      const quarter = Math.floor(cestNow.getMonth() / 3);
+      end.setMonth((quarter + 1) * 3, 0);
+      end.setHours(23, 59, 59, 999);
+    }
+
+    // Aggregate up/down counts per asset in window
+    const rows = await db
+      .select({
+        assetId: predictions.assetId,
+        direction: predictions.direction,
+        count: sql<number>`count(*)`,
+      })
+      .from(predictions)
+      .where(and(
+        gte(predictions.timestampCreated, start),
+        lte(predictions.timestampCreated, end)
+      ))
+      .groupBy(predictions.assetId, predictions.direction);
+
+    // Map assetId -> { up, down }
+    const map = new Map<string, { up: number; down: number }>();
+    for (const r of rows) {
+      const m = map.get(r.assetId as unknown as string) || { up: 0, down: 0 };
+      if (r.direction === 'up') m.up += Number(r.count);
+      else m.down += Number(r.count);
+      map.set(r.assetId as unknown as string, m);
+    }
+
+    // Attach asset info
+    const result: Array<{ assetId: string; symbol: string; name: string; up: number; down: number; total: number; share: number }> = [];
+    for (const [assetId, v] of map.entries()) {
+      const asset = await db.query.assets.findFirst({ where: eq(assets.id, assetId as any) });
+      if (!asset) continue;
+      const total = v.up + v.down;
+      result.push({ assetId, symbol: asset.symbol, name: asset.name, up: v.up, down: v.down, total, share: total > 0 ? v.up / total : 0 });
+    }
+
+    // Rank: Top Up = highest up count; Top Down = highest down count; exclude overlap
+    const topUp = [...result].sort((a, b) => b.up - a.up).filter(r => r.up > 0);
+    const used = new Set<string>();
+    const topUpLimited = topUp.slice(0, 5).map(r => { used.add(r.assetId); return r; });
+    const topDown = [...result].sort((a, b) => b.down - a.down).filter(r => r.down > 0 && !used.has(r.assetId)).slice(0, 5);
+
+    res.json({ topUp: topUpLimited, topDown });
+  } catch (error) {
+    console.error('Error fetching top assets:', error);
+    res.status(500).json({ error: 'Failed to fetch top assets', topUp: [], topDown: [] });
+  }
+});
+
 // Sentiment aggregation endpoint - Enhanced with real-time updates
 router.get('/sentiment/:assetSymbol/:duration', async (req, res) => {
   try {
     const { assetSymbol, duration } = req.params;
+
+    // Intercept 'global' keyword to serve global sentiment even if route matches this handler
+    if (assetSymbol.toLowerCase() === 'global') {
+      const response = await computeGlobalSentimentResponse(duration);
+      res.json(response);
+      if (wsService) {
+        wsService.broadcastSentimentUpdate('GLOBAL', duration, response);
+      }
+      return;
+    }
     const token = req.headers.authorization?.replace('Bearer ', '');
 
     // Check if user is authenticated and verified
@@ -1250,12 +1554,177 @@ router.get('/sentiment/:assetSymbol/:duration', async (req, res) => {
   }
 });
 
+// Global sentiment via query param for compatibility: /api/sentiment/global?duration=short|medium|long
+router.get('/sentiment/global', async (req, res) => {
+  try {
+    const duration = (req.query.duration as string) || 'short';
+    const validDurations = ['short', 'medium', 'long'];
+    if (!validDurations.includes(duration)) {
+      return res.status(400).json({ error: 'Invalid duration. Must be short, medium, or long' });
+    }
+    const response = await computeGlobalSentimentResponse(duration);
+    res.json(response);
+  } catch (error) {
+    console.error('Error fetching global sentiment (query):', error);
+    // Safe fallback instead of 500
+    try {
+      const d = (req.query.duration as string) || 'short';
+      const now = new Date();
+      const windowMsMap: Record<string, number> = {
+        'short': 7 * 24 * 60 * 60 * 1000,   // 1 week
+        'medium': 30 * 24 * 60 * 60 * 1000, // 1 month
+        'long': 90 * 24 * 60 * 60 * 1000,   // 3 months
+      };
+      const windowMs = windowMsMap[d] || windowMsMap['short'];
+      const start = new Date(now.getTime() - windowMs);
+      const luxonSlots = getAllSlotsLuxon(start.toISOString(), now.toISOString(), d as any);
+      const count = Math.max(1, luxonSlots.length);
+      const segmentMs = Math.max(1, Math.floor(windowMs / count));
+      const slots = Array.from({ length: count }, (_, i) => ({
+        slotNumber: i + 1,
+        slotLabel: `Slot ${i + 1}`,
+        up: 0,
+        down: 0,
+        total: 0,
+        slotStart: new Date(start.getTime() + i * segmentMs),
+        slotEnd: i === count - 1 ? now : new Date(start.getTime() + (i + 1) * segmentMs),
+      }));
+      return res.json({
+        duration: d,
+        slots,
+        summary: {
+          totalPredictions: 0,
+          totalUp: 0,
+          totalDown: 0,
+          upPercentage: 0,
+          downPercentage: 0,
+          overallSentiment: 'neutral',
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (fallbackErr) {
+      console.error('Global sentiment fallback (query) failed:', fallbackErr);
+      return res.json({
+        duration: (req.query.duration as string) || 'short',
+        slots: Array.from({ length: 8 }, (_, i) => ({
+          slotNumber: i + 1,
+          slotLabel: `Slot ${i + 1}`,
+          up: 0,
+          down: 0,
+          total: 0,
+        })),
+        summary: {
+          totalPredictions: 0,
+          totalUp: 0,
+          totalDown: 0,
+          upPercentage: 0,
+          downPercentage: 0,
+          overallSentiment: 'neutral',
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+});
+
+// Global sentiment aggregation across all assets (no auth required)
+router.get('/sentiment/global/:duration', async (req, res) => {
+  try {
+    const { duration } = req.params;
+
+    // Validate duration
+    const validDurations = ['short', 'medium', 'long'];
+    if (!validDurations.includes(duration)) {
+      return res.status(400).json({ error: 'Invalid duration. Must be short, medium, or long' });
+    }
+
+    const response = await computeGlobalSentimentResponse(duration);
+
+    res.json(response);
+
+    if (wsService) {
+      wsService.broadcastSentimentUpdate('GLOBAL', duration, response);
+    }
+  } catch (error) {
+    console.error('Error fetching global sentiment data:', error);
+    // Return safe fallback instead of 500
+    try {
+      const d = (req.params.duration as string) || '24h';
+      const now = new Date();
+      const windowMsMap: Record<string, number> = {
+        '1h': 60 * 60 * 1000,
+        '3h': 3 * 60 * 60 * 1000,
+        '6h': 6 * 60 * 60 * 1000,
+        '24h': 24 * 60 * 60 * 1000,
+        '48h': 48 * 60 * 60 * 1000,
+        '1w': 7 * 24 * 60 * 60 * 1000,
+        '1m': 30 * 24 * 60 * 60 * 1000,
+        '3m': 90 * 24 * 60 * 60 * 1000,
+        '6m': 180 * 24 * 60 * 60 * 1000,
+        '1y': 365 * 24 * 60 * 60 * 1000,
+      };
+      const windowMs = windowMsMap[d] || windowMsMap['24h'];
+      const start = new Date(now.getTime() - windowMs);
+      const luxonSlots = getAllSlotsLuxon(start.toISOString(), now.toISOString(), d as any);
+      const count = Math.max(1, luxonSlots.length);
+      const segmentMs = Math.max(1, Math.floor(windowMs / count));
+      const slots = Array.from({ length: count }, (_, i) => ({
+        slotNumber: i + 1,
+        slotLabel: `Slot ${i + 1}`,
+        up: 0,
+        down: 0,
+        total: 0,
+        slotStart: new Date(start.getTime() + i * segmentMs),
+        slotEnd: i === count - 1 ? now : new Date(start.getTime() + (i + 1) * segmentMs),
+      }));
+      return res.json({
+        duration: d,
+        slots,
+        summary: {
+          totalPredictions: 0,
+          totalUp: 0,
+          totalDown: 0,
+          upPercentage: 0,
+          downPercentage: 0,
+          overallSentiment: 'neutral',
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (fallbackErr) {
+      console.error('Global sentiment fallback failed:', fallbackErr);
+      return res.json({
+        duration: (req.params.duration as string) || '24h',
+        slots: Array.from({ length: 8 }, (_, i) => ({
+          slotNumber: i + 1,
+          slotLabel: `Slot ${i + 1}`,
+          up: 0,
+          down: 0,
+          total: 0,
+        })),
+        summary: {
+          totalPredictions: 0,
+          totalUp: 0,
+          totalDown: 0,
+          upPercentage: 0,
+          downPercentage: 0,
+          overallSentiment: 'neutral',
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+});
+
 // ===== SLOT ROUTES =====
 
 // Get active slot
 router.get('/slots/:duration/active', async (req, res) => {
   try {
-    const slot = await getActiveSlot(req.params.duration as any);
+    const duration = req.params.duration as 'short' | 'medium' | 'long';
+    if (!['short', 'medium', 'long'].includes(duration)) {
+      return res.status(400).json({ error: 'Invalid duration. Must be short, medium, or long' });
+    }
+    const slot = await getActiveSlot(duration);
     res.json(slot);
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to get active slot' });
@@ -1265,7 +1734,11 @@ router.get('/slots/:duration/active', async (req, res) => {
 // Get all slots for duration
 router.get('/slots/:duration', async (req, res) => {
   try {
-    const slots = await getAllSlots(req.params.duration as any);
+    const duration = req.params.duration as 'short' | 'medium' | 'long';
+    if (!['short', 'medium', 'long'].includes(duration)) {
+      return res.status(400).json({ error: 'Invalid duration. Must be short, medium, or long' });
+    }
+    const slots = await getAllSlots(duration);
     res.json(slots);
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to get slots' });
@@ -1284,11 +1757,40 @@ router.get('/slots/:duration/next', async (req, res) => {
 
 // ===== ASSET ROUTES =====
 
-// Get all assets
+// Get all assets with pagination
 router.get('/assets', async (req, res) => {
   try {
-    const assets = await getAllAssets();
-    res.json(assets);
+    const { type, page = '1', limit = '30' } = req.query;
+    const pageNum = parseInt(page as string);
+    const limitNum = parseInt(limit as string);
+    const offset = (pageNum - 1) * limitNum;
+
+    let whereClause = undefined;
+    if (type) {
+      whereClause = eq(assets.type, type as string);
+    }
+
+    const assetsList = await db.query.assets.findMany({
+      where: whereClause,
+      orderBy: [assets.symbol],
+      limit: limitNum,
+      offset: offset,
+    });
+
+    // Get total count for pagination info
+    const totalCount = await db.select({ count: sql`count(*)` }).from(assets).where(whereClause);
+    const total = parseInt(totalCount[0].count.toString());
+
+    res.json({
+      assets: assetsList,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+        hasMore: pageNum * limitNum < total
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to get assets' });
   }
@@ -1297,9 +1799,39 @@ router.get('/assets', async (req, res) => {
 
 
 // Get live asset price (real-time from APIs) - MUST come before general price route
+// Handle symbols with colons by using query parameter
+router.get('/assets/live-price', async (req, res) => {
+  try {
+    const symbol = req.query.symbol as string;
+    if (!symbol) {
+      return res.status(400).json({ error: 'Symbol parameter is required' });
+    }
+    
+    console.log('Live price route - symbol:', symbol);
+    const { getLiveAssetPrice } = await import('./price-service');
+    
+    const price = await getLiveAssetPrice(symbol);
+    if (price === null) {
+      return res.status(404).json({ error: 'Asset not found or price unavailable' });
+    }
+    
+    res.json({ 
+      symbol, 
+      price,
+      timestamp: new Date().toISOString(),
+      source: 'live'
+    });
+  } catch (error) {
+    console.error(`Error fetching live price for ${req.query.symbol}:`, error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to get live asset price' });
+  }
+});
+
+// Fallback route for symbols without colons
 router.get('/assets/:symbol/live-price', async (req, res) => {
   try {
     const symbol = decodeURIComponent(req.params.symbol);
+    console.log('Parameterized route - symbol:', symbol);
     const { getLiveAssetPrice } = await import('./price-service');
     
     const price = await getLiveAssetPrice(symbol);
@@ -1320,7 +1852,17 @@ router.get('/assets/:symbol/live-price', async (req, res) => {
 });
 
 // Get asset price (cached from database)
-router.get('/assets/:symbol/price', async (req, res) => {
+// Wildcard version to handle symbols with slashes/colons
+router.get('/assets/*/price', async (req, res, next) => {
+  try {
+    const symbolRaw = req.params[0];
+    const symbol = decodeURIComponent(symbolRaw);
+    const price = await getAssetPrice(symbol);
+    if (!price) return res.status(404).json({ error: 'Price not found' });
+    res.json({ symbol, price });
+  } catch (err) { next(err); }
+});
+router.get('/assets/:symbol(*)/price', async (req, res) => {
   try {
     const symbol = decodeURIComponent(req.params.symbol);
     const price = await getAssetPrice(symbol);
@@ -1334,6 +1876,16 @@ router.get('/assets/:symbol/price', async (req, res) => {
 });
 
 // Get asset price history
+// Wildcard version to handle symbols with slashes/colons
+router.get('/assets/*/history', async (req, res, next) => {
+  try {
+    const symbolRaw = req.params[0];
+    const symbol = decodeURIComponent(symbolRaw);
+    const { days = 30 } = req.query;
+    const history = await getAssetPriceHistory(symbol, Number(days));
+    res.json(history);
+  } catch (err) { next(err); }
+});
 router.get('/assets/:symbol(*)/history', async (req, res) => {
   try {
     const symbol = decodeURIComponent(req.params.symbol);
@@ -1371,7 +1923,207 @@ router.get('/assets/:symbol(*)/opinions', async (req, res) => {
 });
 
 // Get asset by symbol (general route - must come after all specific routes)
-router.get('/assets/:symbol', async (req, res) => {
+// Wildcard version to handle symbols with slashes/colons
+router.get('/assets/*', async (req, res, next) => {
+  try {
+    const symbol = decodeURIComponent(req.params[0]);
+    console.log(`API: Asset route hit with wildcard symbol: ${symbol}`);
+    const asset = await getAssetBySymbol(symbol);
+    if (!asset) return res.status(404).json({ error: 'Asset not found' });
+    res.json(asset);
+  } catch (err) { next(err); }
+});
+
+// Test route
+router.get('/test-analyst', (req, res) => {
+  res.json({ message: 'Test route working' });
+});
+
+// Test route with same pattern as analyst consensus
+router.get('/assets/:symbol(*)/test-pattern', (req, res) => {
+  res.json({ message: 'Pattern test working', symbol: req.params.symbol });
+});
+
+// Simple test route
+router.get('/test-simple', (req, res) => {
+  res.json({ message: 'Simple test working' });
+});
+
+// Get analyst consensus and price targets for an asset
+router.get('/analyst-consensus/:symbol(*)', async (req, res) => {
+  try {
+    console.log('=== ANALYST CONSENSUS REQUEST ===');
+    const symbol = decodeURIComponent(req.params.symbol);
+    const duration = req.query.duration as string || 'short';
+    console.log('Decoded symbol:', symbol, 'Duration:', duration);
+    
+    // Find the asset
+    const asset = await getAssetBySymbol(symbol);
+    if (!asset) {
+      return res.status(404).json({ error: 'Asset not found' });
+    }
+    
+    // Get current price
+    const currentPrice = await getCurrentPrice(asset.id);
+    const priceToUse = currentPrice || 50000; // Default fallback
+    
+    // Map duration to legacy database value
+    let mappedDuration: string;
+    switch (duration) {
+      case 'short':
+        mappedDuration = '1w';
+        break;
+      case 'medium':
+        mappedDuration = '1m';
+        break;
+      case 'long':
+        mappedDuration = '3m';
+        break;
+      default:
+        mappedDuration = '1w';
+    }
+    
+    // Use time-based filtering like global sentiment API instead of duration field
+    const now = new Date();
+    const windowMsMap: Record<string, number> = {
+      'short': 7 * 24 * 60 * 60 * 1000,   // 1 week
+      'medium': 30 * 24 * 60 * 60 * 1000, // 1 month
+      'long': 90 * 24 * 60 * 60 * 1000,   // 3 months
+    };
+    const windowMs = windowMsMap[duration] || windowMsMap['short'];
+    const start = new Date(now.getTime() - windowMs);
+    
+    // Use raw SQL to filter by asset and time window
+    const predictionsResult = await db.execute(sql`
+      SELECT direction, created_at, user_id, asset_id
+      FROM predictions 
+      WHERE asset_id = ${asset.id} 
+      AND timestamp_created >= ${start}
+      AND timestamp_created <= ${now}
+      ORDER BY created_at DESC
+    `);
+    
+    const assetPredictions = predictionsResult.rows || [];
+    console.log(`Found ${assetPredictions.length} predictions for ${symbol} in ${duration} duration`);
+    
+    // Calculate consensus based on predictions
+    let totalPredictions = assetPredictions.length;
+    let buyCount = 0;
+    let sellCount = 0;
+    let holdCount = 0;
+    
+    // Process each prediction
+    assetPredictions.forEach((prediction: any) => {
+      if (prediction.direction === 'up') {
+        buyCount++;
+      } else if (prediction.direction === 'down') {
+        sellCount++;
+      } else {
+        holdCount++;
+      }
+    });
+    
+    // Calculate percentages
+    const buyPercentage = totalPredictions > 0 ? Math.round((buyCount / totalPredictions) * 100) : 0;
+    const sellPercentage = totalPredictions > 0 ? Math.round((sellCount / totalPredictions) * 100) : 0;
+    const holdPercentage = totalPredictions > 0 ? Math.round((holdCount / totalPredictions) * 100) : 0;
+    
+    // Determine recommendation
+    let recommendation = 'Hold';
+    if (buyPercentage > sellPercentage && buyPercentage > holdPercentage) {
+      recommendation = 'Buy';
+    } else if (sellPercentage > buyPercentage && sellPercentage > holdPercentage) {
+      recommendation = 'Sell';
+    }
+    
+    // Calculate average price target based on consensus
+    const averagePriceTarget = priceToUse;
+    
+    // Calculate price change based on recent predictions (last 7 days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const recentPredictions = assetPredictions.filter((p: any) => 
+      new Date(p.created_at) > sevenDaysAgo
+    );
+    
+    const recentBuyRatio = recentPredictions.length > 0 ? 
+      recentPredictions.filter((p: any) => p.direction === 'up').length / recentPredictions.length : 0.5;
+    
+    // Calculate price change based on recent sentiment (-10% to +10%)
+    const priceChange = Math.round((recentBuyRatio - 0.5) * 20 * 100) / 100;
+    
+    // Generate price estimates
+    const lowEstimate = Math.round(averagePriceTarget * 0.8);
+    const highEstimate = Math.round(averagePriceTarget * 1.2);
+    
+    // Generate historical and projected price data
+    const priceHistory = [];
+    const priceProjections = [];
+    const currentTime = new Date();
+    
+    // Historical data (last 12 months) - simulate based on current price
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date(currentTime);
+      date.setMonth(date.getMonth() - i);
+      const basePrice = priceToUse * (0.7 + Math.random() * 0.6); // Simulate historical volatility
+      priceHistory.push({
+        date: date.toISOString().split('T')[0],
+        price: Math.round(basePrice * 100) / 100
+      });
+    }
+    
+    // Projected data (next 12 months) - based on consensus
+    for (let i = 1; i <= 12; i++) {
+      const date = new Date(currentTime);
+      date.setMonth(date.getMonth() + i);
+      const basePrice = averagePriceTarget;
+      const volatility = 0.1; // 10% volatility
+      const trend = priceChange / 100; // Apply trend
+      
+      const low = Math.round(basePrice * (1 - volatility + trend * i / 12) * 100) / 100;
+      const average = Math.round(basePrice * (1 + trend * i / 12) * 100) / 100;
+      const high = Math.round(basePrice * (1 + volatility + trend * i / 12) * 100) / 100;
+      
+      priceProjections.push({
+        date: date.toISOString().split('T')[0],
+        low,
+        average,
+        high
+      });
+    }
+    
+    const response = {
+      buy: buyCount, // Actual count of buy predictions
+      hold: holdCount, // Actual count of hold predictions  
+      sell: sellCount, // Actual count of sell predictions
+      buyPercentage: buyPercentage, // Percentage for pie chart
+      holdPercentage: holdPercentage, // Percentage for pie chart
+      sellPercentage: sellPercentage, // Percentage for pie chart
+      total: totalPredictions,
+      averagePrice: averagePriceTarget,
+      priceChange: priceChange,
+      lowEstimate: lowEstimate,
+      highEstimate: highEstimate,
+      analystCount: totalPredictions,
+      recommendation: recommendation,
+      priceHistory: priceHistory,
+      priceProjections: priceProjections
+    };
+    
+    console.log('Analyst consensus response:', response);
+    res.json(response);
+    
+  } catch (error) {
+    console.error('Error in analyst consensus:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch analyst consensus',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+router.get('/assets/:symbol(*)', async (req, res) => {
   try {
     console.log(`API: Asset route hit with params:`, req.params);
     const symbol = decodeURIComponent(req.params.symbol);
