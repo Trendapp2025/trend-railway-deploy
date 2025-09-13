@@ -39,7 +39,7 @@ export default function HomePage() {
   const { data: cryptoData, isLoading: cryptoLoading } = useQuery({
     queryKey: ["/api/assets", "crypto", "unlimited"],
     queryFn: async () => {
-              const response = await fetch(`${API_ENDPOINTS.ASSETS()}?type=crypto&page=1&limit=1000`);
+              const response = await fetch(`${API_ENDPOINTS.ASSETS()}?type=crypto&page=1&limit=999999`);
       const data = await response.json();
       return data;
     },
@@ -49,7 +49,7 @@ export default function HomePage() {
   const { data: stockData, isLoading: stockLoading } = useQuery({
     queryKey: ["/api/assets", "stock", "unlimited"],
     queryFn: async () => {
-              const response = await fetch(`${API_ENDPOINTS.ASSETS()}?type=stock&page=1&limit=1000`);
+              const response = await fetch(`${API_ENDPOINTS.ASSETS()}?type=stock&page=1&limit=999999`);
       const data = await response.json();
       return data;
     },
@@ -59,7 +59,7 @@ export default function HomePage() {
   const { data: forexData, isLoading: forexLoading } = useQuery({
     queryKey: ["/api/assets", "forex", "unlimited"],
     queryFn: async () => {
-              const response = await fetch(`${API_ENDPOINTS.ASSETS()}?type=forex&page=1&limit=1000`);
+              const response = await fetch(`${API_ENDPOINTS.ASSETS()}?type=forex&page=1&limit=999999`);
       const data = await response.json();
       return data;
     },
