@@ -29,7 +29,7 @@ export function useAssetsWithPrices(assets: Asset[]) {
     try {
       // Try live price first
       const response = await fetch(API_ENDPOINTS.ASSET_LIVE_PRICE(symbol), {
-        signal: AbortSignal.timeout(2000) // 2 second timeout
+        signal: AbortSignal.timeout(5000) // 5 second timeout
       });
       
       if (response.ok) {
@@ -43,7 +43,7 @@ export function useAssetsWithPrices(assets: Asset[]) {
       // Live price failed, try cached price
       try {
         const cachedResponse = await fetch(API_ENDPOINTS.ASSET_PRICE(symbol), {
-          signal: AbortSignal.timeout(1000) // 1 second timeout
+          signal: AbortSignal.timeout(3000) // 3 second timeout
         });
         
         if (cachedResponse.ok) {
@@ -65,7 +65,7 @@ export function useAssetsWithPrices(assets: Asset[]) {
 
   // Process assets in small batches
   const processAssets = async (assetsToCheck: Asset[]) => {
-    const batchSize = 20; // Increased batch size for faster processing
+    const batchSize = 5; // Smaller batch size to avoid rate limiting
     const validAssets: Asset[] = [];
     
     for (let i = 0; i < assetsToCheck.length; i += batchSize) {
@@ -92,7 +92,7 @@ export function useAssetsWithPrices(assets: Asset[]) {
       
       // Small delay between batches
       if (i + batchSize < assetsToCheck.length) {
-        await new Promise(resolve => setTimeout(resolve, 50)); // Reduced delay
+        await new Promise(resolve => setTimeout(resolve, 200)); // Increased delay to avoid rate limiting
       }
     }
     
