@@ -1767,7 +1767,7 @@ router.get('/assets', async (req, res) => {
 
     let whereClause = undefined;
     if (type) {
-      whereClause = eq(assets.type, type as string);
+      whereClause = eq(assets.type, type as 'crypto' | 'stock' | 'forex');
     }
 
     const assetsList = await db.query.assets.findMany({
