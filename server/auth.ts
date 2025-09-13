@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { db } from './db';
 import { users, userProfiles, emailVerifications, passwordResets } from '../shared/schema';
-import { eq, and, or } from 'drizzle-orm';
+import { eq, and, or, gte } from 'drizzle-orm';
 import { sendVerificationEmail, sendPasswordResetEmail, generatePasswordResetToken } from './email-service';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
