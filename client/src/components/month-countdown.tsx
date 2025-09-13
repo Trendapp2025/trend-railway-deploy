@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Clock, Calendar } from 'lucide-react';
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 interface CountdownData {
   isExpired: boolean;
   message: string;
@@ -19,7 +20,7 @@ export function MonthCountdown() {
 
   const fetchCountdown = async () => {
     try {
-      const response = await fetch('/api/leaderboard/countdown');
+        const response = await fetch(buildApiUrl('/api/leaderboard/countdown'));
       if (!response.ok) {
         throw new Error(`Failed to fetch countdown: ${response.status} ${response.statusText}`);
       }

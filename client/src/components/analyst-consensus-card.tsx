@@ -7,6 +7,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis
 import { useQuery } from '@tanstack/react-query';
 import { useLanguage } from '@/hooks/use-language';
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 interface AnalystConsensusData {
   buy: number; // Actual count of buy predictions
   hold: number; // Actual count of hold predictions
@@ -47,7 +48,7 @@ export default function AnalystConsensusCard({ assetSymbol, data, loading }: Ana
   const { data: apiData, isLoading, error, refetch } = useQuery({
     queryKey: ['analyst-consensus', assetSymbol, selectedDuration],
     queryFn: async () => {
-      const response = await fetch(`/api/analyst-consensus/${encodeURIComponent(assetSymbol)}?duration=${selectedDuration}`);
+      const response = await fetch(buildApiUrl(`/api/analyst-consensus/${encodeURIComponent(assetSymbol)}?duration=${selectedDuration}`));
       if (!response.ok) {
         throw new Error('Failed to fetch analyst consensus');
       }

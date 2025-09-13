@@ -7,6 +7,7 @@ import { Input } from './ui/input';
 import { useAuth } from '../hooks/use-auth';
 import { ChevronLeft, ChevronRight, Filter, TrendingUp, TrendingDown } from 'lucide-react';
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 interface Prediction {
   id: string;
   direction: 'up' | 'down';
@@ -83,7 +84,7 @@ const PredictionHistory: React.FC<PredictionHistoryProps> = ({
         ...filters,
       });
 
-      const response = await fetch(`/api/users/${userId}/predictions?${params}`, {
+      const response = await fetch(buildApiUrl(`/api/users/${userId}/predictions?${params}`), {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',

@@ -16,6 +16,7 @@ import { MonthCountdown } from "@/components/month-countdown";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 export default function LeaderboardPage() {
   const { user } = useAuth();
   const [selectedMonth, setSelectedMonth] = useState<string>("");
@@ -31,7 +32,7 @@ export default function LeaderboardPage() {
     queryKey: ["/api/leaderboard", selectedMonth || "previous", includeAdmins],
     queryFn: async () => {
       const month = selectedMonth || "previous";
-      const response = await fetch(`/api/leaderboard?month=${month}&includeAdmins=${includeAdmins}`);
+        const response = await fetch(buildApiUrl(`/api/leaderboard?month=${month}&includeAdmins=${includeAdmins}`));
       if (!response.ok) {
         throw new Error('Failed to fetch leaderboard data');
       }
@@ -45,7 +46,7 @@ export default function LeaderboardPage() {
   }>({
     queryKey: ["/api/leaderboard/current", includeAdmins],
     queryFn: async () => {
-      const response = await fetch(`/api/leaderboard/current?includeAdmins=${includeAdmins}`);
+          const response = await fetch(buildApiUrl(`/api/leaderboard/current?includeAdmins=${includeAdmins}`));
       if (!response.ok) {
         throw new Error('Failed to fetch current month data');
       }

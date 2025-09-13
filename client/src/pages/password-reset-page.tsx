@@ -9,6 +9,7 @@ import AppHeader from "@/components/app-header";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 export default function PasswordResetPage() {
   const [location] = useLocation();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -48,7 +49,7 @@ export default function PasswordResetPage() {
 
   const resetPasswordMutation = useMutation({
     mutationFn: async (data: { token: string; password: string }) => {
-      const response = await fetch("/api/auth/reset-password", {
+      const response = await fetch(buildApiUrl('/api/auth/reset-password'), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

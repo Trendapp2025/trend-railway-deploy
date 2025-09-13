@@ -20,6 +20,7 @@ import PasswordChangeForm from "@/components/password-change-form";
 import EmailChangeForm from "@/components/email-change-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 interface PredictionWithAsset extends Prediction {
   asset: {
     name: string;
@@ -47,7 +48,7 @@ export default function ProfilePage() {
     queryKey: ["predictions"],
     queryFn: async ({ queryKey }) => {
       try {
-        const response = await fetch('/api/predictions', {
+        const response = await fetch(API_ENDPOINTS.PREDICTIONS(), {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
           },

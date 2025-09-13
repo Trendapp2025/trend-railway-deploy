@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Eye, EyeOff, Lock, Save, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 interface PasswordChangeFormProps {
   onCancel: () => void;
 }
@@ -24,7 +25,7 @@ export default function PasswordChangeForm({ onCancel }: PasswordChangeFormProps
 
   const changePasswordMutation = useMutation({
     mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
-      const response = await fetch("/api/user/change-password", {
+      const response = await fetch(buildApiUrl('/api/user/change-password'), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

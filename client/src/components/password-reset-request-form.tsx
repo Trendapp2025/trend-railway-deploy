@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Mail, Send, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 interface PasswordResetRequestFormProps {
   onCancel: () => void;
 }
@@ -18,7 +19,7 @@ export default function PasswordResetRequestForm({ onCancel }: PasswordResetRequ
 
   const resetPasswordMutation = useMutation({
     mutationFn: async (data: { email: string }) => {
-      const response = await fetch("/api/auth/request-reset", {
+      const response = await fetch(buildApiUrl('/api/auth/request-reset'), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

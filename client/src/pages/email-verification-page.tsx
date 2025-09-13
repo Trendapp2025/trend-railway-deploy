@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Check, X, Loader2, Mail } from "lucide-react";
 import AppHeader from "@/components/app-header";
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 export default function EmailVerificationPage() {
   const [location] = useLocation();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -25,7 +26,7 @@ export default function EmailVerificationPage() {
         }
 
         // Call the verification API
-        const response = await fetch('/api/auth/verify-email', {
+        const response = await fetch(buildApiUrl('/api/auth/verify-email'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

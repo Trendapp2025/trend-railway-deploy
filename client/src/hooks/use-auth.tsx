@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { registerWithEmailAndPassword, sendPasswordReset, loginWithEmailAndPassword, logout as firebaseLogout, onAuthStateChange } from "../lib/firebase-auth";
 import { auth } from "../lib/firebase";
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 // Client-side User type (simplified from schema)
 interface User {
   id: string;
@@ -86,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.log('Firebase email:', firebaseUser.email);
             
             // Use the new endpoint that gets profile by email (no auth required)
-            const response = await fetch(`/api/user/profile/email/${encodeURIComponent(firebaseUser.email!)}`);
+            const response = await fetch(buildApiUrl(`/api/user/profile/email/${encodeURIComponent(firebaseUser.email!)}`));
             
             console.log('Profile response status:', response.status);
             console.log('Profile response headers:', response.headers);
@@ -148,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const fetchProfile = async () => {
         try {
           // Use the new endpoint that gets profile by email (no auth required)
-          const response = await fetch(`/api/user/profile/email/${encodeURIComponent(auth.currentUser?.email || '')}`);
+            const response = await fetch(buildApiUrl(`/api/user/profile/email/${encodeURIComponent(auth.currentUser?.email || '')}`));
           
           if (response.ok) {
             const profileData = await response.json();
@@ -323,7 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) {
       try {
         // Use the new endpoint that gets profile by email (no auth required)
-        const response = await fetch(`/api/user/profile/email/${encodeURIComponent(auth.currentUser?.email || '')}`);
+            const response = await fetch(buildApiUrl(`/api/user/profile/email/${encodeURIComponent(auth.currentUser?.email || '')}`));
         
         if (response.ok) {
           const profileData = await response.json();

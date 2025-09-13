@@ -8,6 +8,7 @@ import SuggestAssetForm from "@/components/suggest-asset-form";
 import ShareApp from "@/components/share-app";
 import { useQuery } from "@tanstack/react-query";
 import { Asset } from "@shared/schema";
+import { API_ENDPOINTS } from "@/lib/api-config";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,7 @@ export default function HomePage() {
   const { data: cryptoData, isLoading: cryptoLoading } = useQuery({
     queryKey: ["/api/assets", "crypto", "unlimited"],
     queryFn: async () => {
-      const response = await fetch(`/api/assets?type=crypto&page=1&limit=999999`);
+      const response = await fetch(`${API_ENDPOINTS.ASSETS()}?type=crypto&page=1&limit=999999`);
       const data = await response.json();
       return data;
     },
@@ -48,7 +49,7 @@ export default function HomePage() {
   const { data: stockData, isLoading: stockLoading } = useQuery({
     queryKey: ["/api/assets", "stock", "unlimited"],
     queryFn: async () => {
-      const response = await fetch(`/api/assets?type=stock&page=1&limit=999999`);
+      const response = await fetch(`${API_ENDPOINTS.ASSETS()}?type=stock&page=1&limit=999999`);
       const data = await response.json();
       return data;
     },
@@ -58,7 +59,7 @@ export default function HomePage() {
   const { data: forexData, isLoading: forexLoading } = useQuery({
     queryKey: ["/api/assets", "forex", "unlimited"],
     queryFn: async () => {
-      const response = await fetch(`/api/assets?type=forex&page=1&limit=999999`);
+      const response = await fetch(`${API_ENDPOINTS.ASSETS()}?type=forex&page=1&limit=999999`);
       const data = await response.json();
       return data;
     },

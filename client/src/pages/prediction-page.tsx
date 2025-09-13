@@ -9,6 +9,7 @@ import AppHeader from '@/components/app-header';
 import { EnhancedPredictionForm } from '@/components/enhanced-prediction-form';
 import AnalystConsensusCard from '@/components/analyst-consensus-card';
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 export default function PredictionPage() {
   const [, params] = useRoute('/predict/:assetSymbol');
   const assetSymbol = params?.assetSymbol;
@@ -17,7 +18,7 @@ export default function PredictionPage() {
   const { data: asset, isLoading: isLoadingAsset } = useQuery({
     queryKey: ['asset', assetSymbol],
     queryFn: async () => {
-      const response = await fetch(`/api/assets/${assetSymbol}`);
+      const response = await fetch(buildApiUrl(`/api/assets/${assetSymbol}`));
       if (!response.ok) throw new Error('Failed to fetch asset');
       return response.json();
     },

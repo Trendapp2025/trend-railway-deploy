@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Edit, Save, X, User2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 interface ProfileEditFormProps {
   currentBio: string | null;
   currentAvatar: string | null;
@@ -30,7 +31,7 @@ export default function ProfileEditForm({
 
   const updateProfileMutation = useMutation({
     mutationFn: async (data: { bio: string; avatar: string }) => {
-      const response = await fetch("/api/user/profile", {
+      const response = await fetch(API_ENDPOINTS.USER_PROFILE(), {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

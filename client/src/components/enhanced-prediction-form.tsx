@@ -13,6 +13,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../hooks/use-toast';
 import { useLanguage } from '../hooks/use-language';
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 const predictionSchema = z.object({
   assetSymbol: z.string().min(1, 'Asset is required'),
   duration: z.string().min(1, 'Duration is required'),
@@ -66,7 +67,7 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
     mutationFn: async (data: PredictionFormData) => {
       console.log('Creating prediction with data:', data);
       
-      const response = await fetch('/api/predictions', {
+      const response = await fetch(API_ENDPOINTS.PREDICTIONS(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

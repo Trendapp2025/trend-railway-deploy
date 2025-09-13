@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Asset } from '@shared/schema';
+import { API_ENDPOINTS } from '@/lib/api-config';
 
 // Cache for price availability
 const priceCache = new Map<string, { hasPrice: boolean; timestamp: number }>();
@@ -27,7 +28,7 @@ export function useAssetsWithPrices(assets: Asset[]) {
 
     try {
       // Try live price first
-      const response = await fetch(`/api/assets/${encodeURIComponent(symbol)}/live-price`, {
+      const response = await fetch(API_ENDPOINTS.ASSET_LIVE_PRICE(symbol), {
         signal: AbortSignal.timeout(2000) // 2 second timeout
       });
       
@@ -41,7 +42,7 @@ export function useAssetsWithPrices(assets: Asset[]) {
     } catch (error) {
       // Live price failed, try cached price
       try {
-        const cachedResponse = await fetch(`/api/assets/${encodeURIComponent(symbol)}/price`, {
+        const cachedResponse = await fetch(API_ENDPOINTS.ASSET_PRICE(symbol), {
           signal: AbortSignal.timeout(1000) // 1 second timeout
         });
         

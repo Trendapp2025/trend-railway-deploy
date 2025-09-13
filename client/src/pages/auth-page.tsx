@@ -14,6 +14,7 @@ import { Redirect } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { signInWithGoogle } from "@/lib/firebase-auth";
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(1, "Password is required"),
@@ -68,7 +69,7 @@ export default function AuthPage() {
       const idToken = await result.user.getIdToken();
       
       // Send token to your backend
-      const response = await fetch('/api/auth/google', {
+      const response = await fetch(buildApiUrl('/api/auth/google'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

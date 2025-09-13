@@ -6,6 +6,7 @@ import { TrendingUp, TrendingDown } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, Tooltip } from 'recharts';
 import { useLanguage } from '@/hooks/use-language';
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 type DurationKey = 'short' | 'medium' | 'long';
 
 interface GlobalSentimentSlot {
@@ -77,7 +78,7 @@ export default function GlobalSentimentCard(): JSX.Element {
       setLoading(true);
       setError(null);
       // Use query param variant to avoid path conflicts and ensure proxying
-      const res = await fetch(`/api/sentiment/global?duration=${encodeURIComponent(duration)}`);
+      const res = await fetch(buildApiUrl(`/api/sentiment/global?duration=${encodeURIComponent(duration)}`));
       if (!res.ok) {
         // Graceful client-side fallback to neutral data instead of showing error
         const fallback = buildNeutralFallback(duration);
@@ -106,7 +107,7 @@ export default function GlobalSentimentCard(): JSX.Element {
 
   const fetchTopAssets = async () => {
     try {
-      const res = await fetch(`/api/sentiment/global/top-assets?period=${encodeURIComponent(period)}`);
+      const res = await fetch(buildApiUrl(`/api/sentiment/global/top-assets?period=${encodeURIComponent(period)}`));
       if (!res.ok) return;
       const json = await res.json();
       setTopUp(json.topUp || []);

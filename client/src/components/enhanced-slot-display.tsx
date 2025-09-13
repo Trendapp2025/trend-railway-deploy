@@ -6,6 +6,7 @@ import { Clock, Lock, Unlock, TrendingUp, TrendingDown, Info, ChevronDown, Chevr
 import { useQuery } from '@tanstack/react-query';
 import { useLanguage } from '../hooks/use-language';
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 interface Interval {
   intervalNumber: number;
   start: string;
@@ -57,7 +58,7 @@ export function EnhancedSlotDisplay({ duration, onSlotSelect, selectedSlot }: En
   const { data: slots, isLoading, error } = useQuery({
     queryKey: ['slots', duration],
     queryFn: async () => {
-      const response = await fetch(`/api/slots/${duration}`);
+      const response = await fetch(buildApiUrl(`/api/slots/${duration}`));
       if (!response.ok) throw new Error('Failed to fetch slots');
       const data = await response.json();
       console.log('Slots data received:', data);

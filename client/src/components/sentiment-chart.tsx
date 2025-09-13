@@ -9,6 +9,7 @@ import { BarChart3 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { RefreshCw } from 'lucide-react';
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 interface SentimentData {
   slotNumber: number;
   slotLabel: string;
@@ -49,7 +50,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`/api/sentiment/${encodeURIComponent(assetSymbol)}?duration=${duration}`, {
+      const response = await fetch(buildApiUrl(`/api/sentiment/${encodeURIComponent(assetSymbol)}?duration=${duration}`), {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',

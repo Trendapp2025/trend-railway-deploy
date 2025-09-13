@@ -20,6 +20,7 @@ import { Shield, User2, CoinsIcon, CirclePlus, Edit, Trash2, Check, X, Filter, R
 import { useToast } from "@/hooks/use-toast";
 import { Asset, User, Prediction } from "@shared/schema";
 
+import { API_ENDPOINTS } from "@/lib/api-config";
 interface PredictionWithDetails extends Prediction {
   username?: string;
   email?: string;
@@ -68,7 +69,7 @@ export default function AdminPage() {
   const updateSlotMutation = useMutation({
     mutationFn: async (payload: any) => {
       const token = localStorage.getItem('authToken');
-      const res = await fetch(`/api/admin/slots/${payload.id}`, {
+      const res = await fetch(buildApiUrl(`/api/admin/slots/${payload.id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(payload)
@@ -96,7 +97,7 @@ export default function AdminPage() {
         throw new Error("No authentication token found");
       }
       
-      const response = await fetch("/api/admin/stats", {
+      const response = await fetch(buildApiUrl('/api/admin/stats'), {
         headers: {
           "Authorization": `Bearer ${token}`
         }
@@ -121,7 +122,7 @@ export default function AdminPage() {
         throw new Error("No authentication token found");
       }
       
-      const response = await fetch("/api/admin/assets", {
+      const response = await fetch(buildApiUrl('/api/admin/assets'), {
         headers: {
           "Authorization": `Bearer ${token}`
         }
@@ -146,7 +147,7 @@ export default function AdminPage() {
         throw new Error("No authentication token found");
       }
       
-      const response = await fetch("/api/admin/users", {
+      const response = await fetch(buildApiUrl('/api/admin/users'), {
         headers: {
           "Authorization": `Bearer ${token}`
         }
@@ -175,7 +176,7 @@ export default function AdminPage() {
         throw new Error("No authentication token found");
       }
       
-      const response = await fetch("/api/admin/predictions", {
+      const response = await fetch(buildApiUrl('/api/admin/predictions'), {
         headers: {
           "Authorization": `Bearer ${token}`
         }
@@ -215,7 +216,7 @@ export default function AdminPage() {
         throw new Error("No authentication token found");
       }
       
-      const response = await fetch(`/api/admin/users/${selectedUserForHistory}/predictions`, {
+      const response = await fetch(buildApiUrl(`/api/admin/users/${selectedUserForHistory}/predictions`), {
         headers: {
           "Authorization": `Bearer ${token}`
         }
@@ -238,7 +239,7 @@ export default function AdminPage() {
         throw new Error("No authentication token found");
       }
       
-      const response = await fetch("/api/admin/assets", {
+      const response = await fetch(buildApiUrl('/api/admin/assets'), {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -280,7 +281,7 @@ export default function AdminPage() {
         throw new Error("No authentication token found");
       }
       
-      const response = await fetch(`/api/admin/users/${userId}`, {
+      const response = await fetch(buildApiUrl(`/api/admin/users/${userId}`), {
         method: "PUT",
         headers: { 
           "Content-Type": "application/json",
@@ -326,7 +327,7 @@ export default function AdminPage() {
         throw new Error("No authentication token found");
       }
       
-      const response = await fetch("/api/admin/prices/update", {
+      const response = await fetch(buildApiUrl('/api/admin/prices/update'), {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`
@@ -365,7 +366,7 @@ export default function AdminPage() {
         throw new Error("No authentication token found");
       }
       
-      const response = await fetch("/api/admin/badges/backfill", {
+      const response = await fetch(buildApiUrl('/api/admin/badges/backfill'), {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`
