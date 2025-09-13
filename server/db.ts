@@ -11,7 +11,10 @@ function getNormalizedDatabaseUrl(): string | undefined {
   console.log('Raw DATABASE_URL exists:', !!raw);
   if (!raw) {
     console.error('DATABASE_URL environment variable is not set!');
-    return undefined;
+    // Fallback for Railway deployment
+    const fallback = 'postgresql://postgres:erXKZIzQTMZHWCHbbgLHnAzYDljXdrIe@hopper.proxy.rlwy.net:26012/railway';
+    console.log('Using fallback DATABASE_URL for Railway');
+    return fallback;
   }
   try {
     const u = new URL(raw);

@@ -1760,8 +1760,11 @@ router.get('/slots/:duration/next', async (req, res) => {
 
 // Test direct PostgreSQL connection
 router.get('/test-pg', async (req, res) => {
+  const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:erXKZIzQTMZHWCHbbgLHnAzYDljXdrIe@hopper.proxy.rlwy.net:26012/railway';
+  console.log('Using connection string:', connectionString ? 'Set' : 'Not set');
+  
   const client = new Client({
-    connectionString: process.env.DATABASE_URL,
+    connectionString,
     ssl: {
       rejectUnauthorized: false
     }
