@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from './db';
 import { users, emailVerifications, predictions, assets, userProfiles, slotConfigs } from '../shared/schema';
 import { eq, and, sql, gte, lte, inArray, desc, gt } from 'drizzle-orm';
+import { Client } from 'pg';
 import jwt from 'jsonwebtoken';
 import WebSocketService from './websocket-service';
 import { getAssetBySymbol, getCurrentPrice } from './price-service';
@@ -1757,19 +1758,59 @@ router.get('/slots/:duration/next', async (req, res) => {
 
 // ===== ASSET ROUTES =====
 
+// Test direct PostgreSQL connection
+router.get('/test-pg', async (req, res) => {
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false
+    }
+  });
+  
+  try {
+    console.log('Testing direct PostgreSQL connection...');
+    await client.connect();
+    console.log('Direct PostgreSQL connection successful');
+    
+    const result = await client.query('SELECT 1 as test');
+    console.log('Direct query successful:', result.rows);
+    
+    await client.end();
+    res.json({ success: true, message: 'Direct PostgreSQL connection works', result: result.rows });
+  } catch (error) {
+    console.error('Direct PostgreSQL test failed:', error);
+    try { await client.end(); } catch {}
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Direct PostgreSQL test failed',
+      code: (error as any).code,
+      errno: (error as any).errno
+    });
+  }
+});
+
 // Test database connection
 router.get('/test-db', async (req, res) => {
   try {
     console.log('Testing database connection...');
+    console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+    console.log('NODE_ENV:', process.env.NODE_ENV);
+    
     const result = await db.execute(sql`SELECT 1 as test`);
     console.log('Database test successful:', result);
     res.json({ success: true, message: 'Database connection works', result });
   } catch (error) {
     console.error('Database test failed:', error);
+    console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Database test failed',
-      stack: error instanceof Error ? error.stack : undefined
+      stack: error instanceof Error ? error.stack : undefined,
+      code: (error as any).code,
+      errno: (error as any).errno,
+      syscall: (error as any).syscall,
+      address: (error as any).address,
+      port: (error as any).port
     });
   }
 });
