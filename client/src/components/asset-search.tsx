@@ -24,6 +24,10 @@ export default function AssetSearch() {
   });
 
   const assets = assetsData?.assets || [];
+  
+  // Debug: Log the number of assets fetched
+  console.log('Total assets fetched from API:', assets.length);
+  console.log('Assets data:', assetsData);
 
   const handleSearch = () => {
     if (!assets || !searchQuery.trim()) {

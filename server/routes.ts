@@ -1850,7 +1850,7 @@ router.get('/assets', async (req, res) => {
     console.log('Assets endpoint hit:', req.query);
     const { type, page = '1', limit = '30' } = req.query;
     const pageNum = parseInt(page as string);
-    const limitNum = Math.min(parseInt(limit as string), 100); // Cap at 100 to prevent timeouts
+    const limitNum = parseInt(limit as string);
     const offset = (pageNum - 1) * limitNum;
 
     console.log('Query params:', { type, pageNum, limitNum, offset });

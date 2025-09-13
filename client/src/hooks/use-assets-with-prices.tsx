@@ -65,7 +65,7 @@ export function useAssetsWithPrices(assets: Asset[]) {
 
   // Process assets in small batches
   const processAssets = async (assetsToCheck: Asset[]) => {
-    const batchSize = 5;
+    const batchSize = 20; // Increased batch size for faster processing
     const validAssets: Asset[] = [];
     
     for (let i = 0; i < assetsToCheck.length; i += batchSize) {
@@ -92,7 +92,7 @@ export function useAssetsWithPrices(assets: Asset[]) {
       
       // Small delay between batches
       if (i + batchSize < assetsToCheck.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 50)); // Reduced delay
       }
     }
     
