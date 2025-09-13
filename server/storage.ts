@@ -17,13 +17,13 @@ const initialAssets = [
 ];
 
 export interface IStorage {
-  getUser(id: number): Promise<User | undefined>;
+  getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>; // Nuovo metodo per recuperare tutti gli utenti
-  checkAndUpdateVerificationStatus(userId: number): Promise<boolean>;
-  getVerificationProgress(userId: number): Promise<{ 
+  checkAndUpdateVerificationStatus(userId: string): Promise<boolean>;
+  getVerificationProgress(userId: string): Promise<{ 
     isVerified: boolean; 
     accountAge: { 
       months: number; 
@@ -36,18 +36,18 @@ export interface IStorage {
   }>;
   
   getAllAssets(): Promise<Asset[]>;
-  getAssetById(id: number): Promise<Asset | undefined>;
+  getAssetById(id: string): Promise<Asset | undefined>;
   getAssetBySymbol(symbol: string): Promise<Asset | undefined>;
-  updateAssetSentiment(assetId: number): Promise<Asset>;
+  updateAssetSentiment(assetId: string): Promise<Asset>;
   
-  getOpinionsByAssetId(assetId: number): Promise<Opinion[]>;
+  getOpinionsByAssetId(assetId: string): Promise<Opinion[]>;
   createOpinion(opinion: any): Promise<Opinion>;
   
   // Badge management methods
-  getUserBadges(userId: number): Promise<UserBadge[]>;
+  getUserBadges(userId: string): Promise<UserBadge[]>;
   getMonthlyTopPredictors(monthYear: string, limit?: number): Promise<User[]>;
   assignMonthlyBadges(monthYear: string): Promise<void>;
-  getBadgeHistory(userId: number): Promise<UserBadge[]>;
+  getBadgeHistory(userId: string): Promise<UserBadge[]>;
   
   // Initialize the database with default data if needed
   initializeDatabase(): Promise<void>;
@@ -68,7 +68,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // User methods
-  async getUser(id: number): Promise<User | undefined> {
+  async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
@@ -101,7 +101,7 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
   
-  async checkAndUpdateVerificationStatus(userId: number): Promise<boolean> {
+  async checkAndUpdateVerificationStatus(userId: string): Promise<boolean> {
     // Get the user
     const user = await this.getUser(userId);
     if (!user) return false;
@@ -132,7 +132,7 @@ export class DatabaseStorage implements IStorage {
     return shouldBeVerified;
   }
   
-  async getVerificationProgress(userId: number): Promise<{ 
+  async getVerificationProgress(userId: string): Promise<{ 
     isVerified: boolean; 
     accountAge: { 
       months: number; 
@@ -192,7 +192,7 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(assets);
   }
   
-  async getAssetById(id: number): Promise<Asset | undefined> {
+  async getAssetById(id: string): Promise<Asset | undefined> {
     const [asset] = await db.select().from(assets).where(eq(assets.id, id));
     return asset;
   }
@@ -202,7 +202,7 @@ export class DatabaseStorage implements IStorage {
     return asset;
   }
   
-  async updateAssetSentiment(assetId: number): Promise<Asset> {
+  async updateAssetSentiment(assetId: string): Promise<Asset> {
     const [asset] = await db.select().from(assets).where(eq(assets.id, assetId));
     if (!asset) {
       throw new Error("Asset not found");
@@ -253,7 +253,7 @@ export class DatabaseStorage implements IStorage {
   }
   
   // Opinion methods
-  async getOpinionsByAssetId(assetId: number): Promise<Opinion[]> {
+  async getOpinionsByAssetId(assetId: string): Promise<Opinion[]> {
     return db
       .select()
       .from(opinions)
@@ -271,7 +271,7 @@ export class DatabaseStorage implements IStorage {
   }
   
   // Badge management methods
-  async getUserBadges(userId: number): Promise<UserBadge[]> {
+  async getUserBadges(userId: string): Promise<UserBadge[]> {
     return db
       .select()
       .from(userBadges)
@@ -325,7 +325,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
   
-  async getBadgeHistory(userId: number): Promise<UserBadge[]> {
+  async getBadgeHistory(userId: string): Promise<UserBadge[]> {
     return db
       .select()
       .from(userBadges)

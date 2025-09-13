@@ -130,9 +130,11 @@ async function initializeSystem() {
     
     // Schedule slot updates (every minute)
     setInterval(() => {
-      wsService.broadcastSlotUpdate('24h');
-      wsService.broadcastSlotUpdate('7d');
-      wsService.broadcastSlotUpdate('30d');
+      // For now, just broadcast basic slot updates without detailed parameters
+      // TODO: Implement proper slot calculation logic
+      wsService.broadcastSlotUpdate('24h', 1, 3600, Date.now() + 3600000);
+      wsService.broadcastSlotUpdate('7d', 1, 86400, Date.now() + 86400000);
+      wsService.broadcastSlotUpdate('30d', 1, 2592000, Date.now() + 2592000000);
     }, 60 * 1000); // 1 minute
     console.log('Slot updates scheduled');
     

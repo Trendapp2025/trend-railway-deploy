@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { db } from './db';
 import { users, userProfiles, emailVerifications, passwordResets } from '../shared/schema';
 import { eq, and, or } from 'drizzle-orm';
-import { sendVerificationEmail, sendPasswordResetEmail, generateVerificationToken, generatePasswordResetToken } from './email-service';
+import { sendVerificationEmail, sendPasswordResetEmail, generatePasswordResetToken } from './email-service';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const JWT_EXPIRES_IN = '7d';
@@ -203,7 +203,7 @@ export async function verifyEmail(token: string) {
     where: and(
       eq(emailVerifications.token, token),
       eq(emailVerifications.verified, false),
-      eq(emailVerifications.expiresAt, new Date(), '>')
+      gte(emailVerifications.expiresAt, new Date())
     ),
   });
 
@@ -266,7 +266,7 @@ export async function resetPassword(input: NewPasswordInput) {
     where: and(
       eq(passwordResets.token, token),
       eq(passwordResets.used, false),
-      eq(passwordResets.expiresAt, new Date(), '>')
+      gte(passwordResets.expiresAt, new Date())
     ),
   });
 

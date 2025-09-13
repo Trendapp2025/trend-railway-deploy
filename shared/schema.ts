@@ -22,6 +22,10 @@ export const users = pgTable("users", {
   verificationToken: text("verification_token"),
   verificationTokenExpiry: timestamp("verification_token_expiry"),
   isActive: boolean("is_active").default(true).notNull(),
+  isVerifiedAdvisor: boolean("is_verified_advisor").default(false).notNull(),
+  totalPredictions: integer("total_predictions").default(0).notNull(),
+  accuracyPercentage: decimal("accuracy_percentage", { precision: 5, scale: 2 }).default("0.00"),
+  currentBadge: text("current_badge"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -59,6 +63,7 @@ export const assets = pgTable("assets", {
   type: assetTypeEnum("type").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   apiSource: text("api_source").notNull(), // "coingecko", "yahoo", "exchangerate"
+  sentiment: text("sentiment"), // "bullish", "bearish", "neutral"
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -182,6 +187,16 @@ export const passwordResets = pgTable("password_resets", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Opinions table
+export const opinions = pgTable("opinions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  assetId: uuid("asset_id").notNull().references(() => assets.id, { onDelete: "cascade" }),
+  sentiment: text("sentiment").notNull(), // "bullish", "bearish", "neutral"
+  prediction: text("prediction").notNull(), // Price prediction
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type UserProfile = typeof userProfiles.$inferSelect;
@@ -195,3 +210,4 @@ export type MonthlyScore = typeof monthlyScores.$inferSelect;
 export type SlotConfig = typeof slotConfigs.$inferSelect;
 export type EmailVerification = typeof emailVerifications.$inferSelect;
 export type PasswordReset = typeof passwordResets.$inferSelect;
+export type Opinion = typeof opinions.$inferSelect;

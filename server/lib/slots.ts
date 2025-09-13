@@ -69,6 +69,11 @@ export function getPointsForPrediction(duration: DurationKey, predictionTime: Da
   return isFirst ? points.firstHalf : points.secondHalf;
 }
 
+// Get points for a slot (alias for getPointsForPrediction for backward compatibility)
+export function getPointsForSlot(duration: DurationKey, predictionTime: DateTime): number {
+  return getPointsForPrediction(duration, predictionTime);
+}
+
 // Get current active slot for a duration (simplified - only one slot per duration)
 export function getCurrentActiveSlot(duration: DurationKey, zone: string = 'Europe/Berlin'): SlotInfo {
   const now = DateTime.now().setZone(zone);
