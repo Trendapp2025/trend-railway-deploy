@@ -17,7 +17,7 @@ export default function AssetSearch() {
   const { data: assetsData, isLoading } = useQuery({
     queryKey: ['/api/assets', 'unlimited'],
     queryFn: async () => {
-      const response = await fetch(`${API_ENDPOINTS.ASSETS()}?page=1&limit=999999`);
+              const response = await fetch(`${API_ENDPOINTS.ASSETS()}?page=1&limit=1000`);
       const data = await response.json();
       return data;
     },
