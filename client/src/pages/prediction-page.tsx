@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { buildApiUrl } from '@/lib/api-config';
 import { useRoute } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

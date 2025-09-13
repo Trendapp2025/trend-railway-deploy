@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { buildApiUrl } from '@/lib/api-config';
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { Redirect } from "wouter";

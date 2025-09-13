@@ -1,4 +1,5 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import { buildApiUrl } from '@/lib/api-config';
 import {
   useQuery,
   useMutation,

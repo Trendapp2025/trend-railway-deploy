@@ -20,7 +20,7 @@ export function MonthCountdown() {
 
   const fetchCountdown = async () => {
     try {
-        const response = await fetch(buildApiUrl('/api/leaderboard/countdown'));
+        const response = await fetch(API_ENDPOINTS.LEADERBOARD_COUNTDOWN());
       if (!response.ok) {
         throw new Error(`Failed to fetch countdown: ${response.status} ${response.statusText}`);
       }

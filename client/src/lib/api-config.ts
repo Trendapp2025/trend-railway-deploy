@@ -47,6 +47,14 @@ export const API_ENDPOINTS = {
   // User
   USER_PROFILE: () => buildApiUrl('/api/user/profile'),
   USER_PREDICTIONS: () => buildApiUrl('/api/user/predictions'),
+  
+  // Leaderboard
+  LEADERBOARD: () => buildApiUrl('/api/leaderboard'),
+  LEADERBOARD_COUNTDOWN: () => buildApiUrl('/api/leaderboard/countdown'),
+  
+  // Sentiment
+  GLOBAL_SENTIMENT: () => buildApiUrl('/api/sentiment/global'),
+  GLOBAL_SENTIMENT_TOP_ASSETS: (period: string) => buildApiUrl(`/api/sentiment/global/top-assets?period=${period}`),
 } as const;
 
 // Debug helper

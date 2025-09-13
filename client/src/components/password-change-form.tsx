@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { buildApiUrl } from '@/lib/api-config';
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

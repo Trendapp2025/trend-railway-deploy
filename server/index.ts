@@ -32,6 +32,7 @@ const allowedOrigins = [
   'http://localhost:4173',
   'https://natural-pest-production.up.railway.app',
   'https://web-production-88309.up.railway.app',
+  'https://web-production-88309.up.railway.app',
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 

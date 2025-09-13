@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { buildApiUrl } from '@/lib/api-config';
 import { useAuth } from "@/hooks/use-auth";
 import { useLanguage } from "@/hooks/use-language";
 import { useQuery, useMutation } from "@tanstack/react-query";
