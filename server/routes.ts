@@ -1757,6 +1757,19 @@ router.get('/slots/:duration/next', async (req, res) => {
 
 // ===== ASSET ROUTES =====
 
+// Test different tables
+router.get('/test-users', async (req, res) => {
+  try {
+    console.log('Test users endpoint hit');
+    const result = await db.select().from(users).limit(3);
+    console.log('Users query completed, count:', result.length);
+    res.json({ users: result.map(u => ({ id: u.id, username: u.username })), count: result.length });
+  } catch (error) {
+    console.error('Users test error:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed' });
+  }
+});
+
 // Simple assets endpoint for testing
 router.get('/assets-simple', async (req, res) => {
   try {
