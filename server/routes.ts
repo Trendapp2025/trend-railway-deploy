@@ -1757,6 +1757,19 @@ router.get('/slots/:duration/next', async (req, res) => {
 
 // ===== ASSET ROUTES =====
 
+// Simple assets endpoint for testing
+router.get('/assets-simple', async (req, res) => {
+  try {
+    console.log('Simple assets endpoint hit');
+    const result = await db.select().from(assets).limit(5);
+    console.log('Simple query completed, count:', result.length);
+    res.json({ assets: result, count: result.length });
+  } catch (error) {
+    console.error('Simple assets error:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed' });
+  }
+});
+
 // Get all assets with pagination
 router.get('/assets', async (req, res) => {
   try {
