@@ -1760,28 +1760,46 @@ router.get('/slots/:duration/next', async (req, res) => {
 // Get all assets with pagination
 router.get('/assets', async (req, res) => {
   try {
+    console.log('Assets endpoint hit:', req.query);
     const { type, page = '1', limit = '30' } = req.query;
     const pageNum = parseInt(page as string);
-    const limitNum = parseInt(limit as string);
+    const limitNum = Math.min(parseInt(limit as string), 100); // Cap at 100 to prevent timeouts
     const offset = (pageNum - 1) * limitNum;
+
+    console.log('Query params:', { type, pageNum, limitNum, offset });
 
     let whereClause = undefined;
     if (type) {
       whereClause = eq(assets.type, type as 'crypto' | 'stock' | 'forex');
+      console.log('Using type filter:', type);
     }
 
-    const assetsList = await db.query.assets.findMany({
+    console.log('Starting assets query...');
+    
+    // Add timeout wrapper
+    const queryTimeout = 10000; // 10 seconds
+    const assetsPromise = db.query.assets.findMany({
       where: whereClause,
       orderBy: [assets.symbol],
       limit: limitNum,
       offset: offset,
     });
 
-    // Get total count for pagination info
-    const totalCount = await db.select({ count: sql`count(*)` }).from(assets).where(whereClause);
-    const total = parseInt(totalCount[0].count.toString());
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Query timeout')), queryTimeout)
+    );
 
-    res.json({
+    const assetsList = await Promise.race([assetsPromise, timeoutPromise]) as any[];
+    console.log('Assets query completed, count:', assetsList.length);
+
+    // Get total count for pagination info with timeout
+    console.log('Starting count query...');
+    const countPromise = db.select({ count: sql`count(*)` }).from(assets).where(whereClause);
+    const totalCount = await Promise.race([countPromise, timeoutPromise]) as any[];
+    const total = parseInt(totalCount[0].count.toString());
+    console.log('Count query completed, total:', total);
+
+    const response = {
       assets: assetsList,
       pagination: {
         page: pageNum,
@@ -1790,9 +1808,15 @@ router.get('/assets', async (req, res) => {
         totalPages: Math.ceil(total / limitNum),
         hasMore: pageNum * limitNum < total
       }
-    });
+    };
+
+    console.log('Sending response with', assetsList.length, 'assets');
+    res.json(response);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to get assets' });
+    console.error('Assets endpoint error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to get assets';
+    console.error('Error details:', errorMessage);
+    res.status(500).json({ error: errorMessage });
   }
 });
 
