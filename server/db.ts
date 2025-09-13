@@ -8,19 +8,42 @@ dotenv.config({ path: '../.env' });
 
 function getNormalizedDatabaseUrl(): string | undefined {
   const raw = process.env.DATABASE_URL;
-  if (!raw) return undefined;
+  console.log('Raw DATABASE_URL exists:', !!raw);
+  if (!raw) {
+    console.error('DATABASE_URL environment variable is not set!');
+    return undefined;
+  }
   try {
     const u = new URL(raw);
     const host = u.hostname.replace(/^\[(.+)\]$/, '$1');
     const password = decodeURIComponent(u.password);
-    return `${u.protocol}//${u.username}:${encodeURIComponent(password)}@${host}:${u.port}${u.pathname}${u.search}`;
-  } catch {
+    const normalized = `${u.protocol}//${u.username}:${encodeURIComponent(password)}@${host}:${u.port}${u.pathname}${u.search}`;
+    console.log('Database connection to host:', host);
+    return normalized;
+  } catch (error) {
+    console.error('Error parsing DATABASE_URL:', error);
     return raw; // fallback to provided string
   }
 }
 
+const connectionString = getNormalizedDatabaseUrl();
+console.log('Creating database pool...');
+
 const pool = new Pool({
-  connectionString: getNormalizedDatabaseUrl(),
+  connectionString,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 10, // Maximum number of clients in the pool
+  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+  connectionTimeoutMillis: 10000, // Return an error after 10 seconds if connection could not be established
+});
+
+// Test connection on startup
+pool.on('connect', () => {
+  console.log('Database pool connected successfully');
+});
+
+pool.on('error', (err) => {
+  console.error('Database pool error:', err);
 });
 
 export const db = drizzle(pool, { schema });

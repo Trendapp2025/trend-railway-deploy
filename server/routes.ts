@@ -1757,6 +1757,23 @@ router.get('/slots/:duration/next', async (req, res) => {
 
 // ===== ASSET ROUTES =====
 
+// Test database connection
+router.get('/test-db', async (req, res) => {
+  try {
+    console.log('Testing database connection...');
+    const result = await db.execute(sql`SELECT 1 as test`);
+    console.log('Database test successful:', result);
+    res.json({ success: true, message: 'Database connection works', result });
+  } catch (error) {
+    console.error('Database test failed:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Database test failed',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+  }
+});
+
 // Test different tables
 router.get('/test-users', async (req, res) => {
   try {
