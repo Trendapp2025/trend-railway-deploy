@@ -402,7 +402,11 @@ router.use(express.json());
 const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
+    console.log('🔐 Auth middleware called for:', req.path);
+    console.log('🔐 Auth middleware - Authorization header:', authHeader ? 'Present' : 'Missing');
+    
     if (!authHeader) {
+      console.log('🔐 Auth middleware - No authorization header');
       return res.status(401).json({ error: 'Authentication required' });
     }
 
@@ -415,14 +419,59 @@ const authMiddleware = async (req: express.Request, res: express.Response, next:
       try {
         // Verify Firebase ID token
         const decodedToken = await getAdminAuth().verifyIdToken(token);
-        user = {
-          userId: decodedToken.uid,
-          email: decodedToken.email || '',
-          role: 'user', // Default role for Firebase users
-        };
-      } catch (firebaseError) {
-        console.log('Firebase token verification failed, trying JWT...');
         
+        // Look up the user in the database by email to get the actual UUID
+        console.log('Firebase auth - looking up user by email:', decodedToken.email);
+        console.log('Firebase token details:', {
+          uid: decodedToken.uid,
+          email: decodedToken.email,
+          email_verified: decodedToken.email_verified
+        });
+        
+        // Try exact match first
+        let dbUser = await db.query.users.findFirst({
+          where: eq(users.email, decodedToken.email || ''),
+        });
+        
+        // If not found, try case-insensitive match
+        if (!dbUser) {
+          console.log('Exact email match failed, trying case-insensitive...');
+          const allUsers = await db.query.users.findMany();
+          console.log('All users in database:', allUsers.map(u => ({ id: u.id, email: u.email, username: u.username })));
+          
+          dbUser = allUsers.find(u => u.email.toLowerCase() === decodedToken.email?.toLowerCase());
+        }
+        
+        if (!dbUser) {
+          console.log('Firebase user not found in database:', decodedToken.email);
+          console.log('Available users:', await db.query.users.findMany());
+          return res.status(401).json({ error: 'User not found in database' });
+        }
+        
+        console.log('Firebase auth - found user in database:', {
+          firebaseUid: decodedToken.uid,
+          dbUserId: dbUser.id,
+          email: decodedToken.email
+        });
+        
+        user = {
+          userId: dbUser.id, // Use the database UUID, not Firebase UID
+          email: decodedToken.email || '',
+          role: dbUser.role,
+        };
+        
+        console.log('🔐 Auth middleware - Setting user:', {
+          userId: user.userId,
+          email: user.email,
+          role: user.role
+        });
+      } catch (firebaseError) {
+        console.error('Firebase token verification failed:', firebaseError);
+        return res.status(401).json({ error: 'Invalid Firebase token' });
+        
+        // Disable JWT fallback to prevent using Firebase UID as database UUID
+        // If Firebase auth fails, we should not fall back to JWT
+        /*
         // Fallback to JWT verification
         try {
           user = extractUserFromToken(authHeader);
@@ -430,15 +479,23 @@ const authMiddleware = async (req: express.Request, res: express.Response, next:
           console.log('JWT verification also failed');
           return res.status(401).json({ error: 'Invalid authentication token' });
         }
+        */
       }
     } else {
       return res.status(401).json({ error: 'Invalid authorization header format' });
     }
 
     if (!user) {
+      console.log('🔐 Auth middleware - No user found');
       return res.status(401).json({ error: 'Authentication required' });
     }
 
+    console.log('🔐 Auth middleware - Setting req.user:', {
+      userId: user.userId,
+      email: user.email,
+      role: user.role
+    });
+    
     req.user = user;
     next();
   } catch (error) {
@@ -1053,12 +1110,24 @@ router.post('/predictions', authMiddleware, async (req, res) => {
 // Get user predictions
 router.get('/predictions', authMiddleware, async (req, res) => {
   try {
+    console.log('🔍 Predictions endpoint - req.user:', req.user);
     const userId = requireUser(req).userId;
-    console.log('Getting predictions for user:', userId);
+    console.log('🔍 Predictions endpoint - Getting predictions for user:', userId);
+    console.log('🔍 Predictions endpoint - User ID type check:', typeof userId, 'Length:', userId?.length);
+    console.log('🔍 Predictions endpoint - User ID value:', JSON.stringify(userId));
+    
+    // Validate that userId is a valid UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      console.error('Invalid UUID format for userId:', userId);
+      return res.status(400).json({ error: 'Invalid user ID format' });
+    }
+    
     const predictions = await getUserPredictions(userId);
     console.log('Predictions response:', {
       count: predictions.length,
       firstItem: predictions[0],
+      userId: userId,
       allPredictions: predictions
     });
     res.json(predictions);
@@ -2057,7 +2126,51 @@ router.get('/assets/:symbol(*)/test-pattern', (req, res) => {
 
 // Simple test route
 router.get('/test-simple', (req, res) => {
-  res.json({ message: 'Simple test working' });
+  res.json({ message: 'Simple test working - UPDATED VERSION' });
+});
+
+// Test assets limit
+router.get('/test-assets-limit', async (req, res) => {
+  try {
+    const { limit = '999999' } = req.query;
+    const limitNum = parseInt(limit as string);
+    console.log('Test assets limit - requested limit:', limitNum);
+    
+    const result = await db.select().from(assets).limit(limitNum);
+    console.log('Test assets limit - actual returned:', result.length);
+    
+    res.json({ 
+      message: 'Assets limit test', 
+      requestedLimit: limitNum,
+      actualReturned: result.length,
+      totalInDb: result.length
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Test failed' });
+  }
+});
+
+// Test endpoint to get all user details
+router.get('/test-user-details', async (req, res) => {
+  try {
+    console.log('Testing user details query...');
+    const allUsers = await db.query.users.findMany();
+    console.log(`Found ${allUsers.length} users`);
+    res.json({ 
+      message: 'User details query successful', 
+      count: allUsers.length,
+      users: allUsers.map(u => ({ 
+        id: u.id, 
+        username: u.username, 
+        email: u.email,
+        emailVerified: u.emailVerified,
+        createdAt: u.createdAt
+      }))
+    });
+  } catch (error) {
+    console.error('User details query error:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'User details query failed' });
+  }
 });
 
 // Get analyst consensus and price targets for an asset

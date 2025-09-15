@@ -101,7 +101,11 @@ export default function ProfilePage() {
                     <CardTitle className="text-xl">{user.username}</CardTitle>
                     <CardDescription className="flex items-center mt-1">
                       <Calendar className="h-3.5 w-3.5 mr-1" />
-                      Joined {profileLoading ? '...' : new Date(user.createdAt).toLocaleDateString()}
+                      Joined {profileLoading ? '...' : (profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString('en-US', { 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      }) : 'Unknown')}
                     </CardDescription>
                     {isEmailVerified && (
                       <Badge variant="outline" className="mt-2 bg-primary/10">

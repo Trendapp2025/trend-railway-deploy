@@ -247,12 +247,18 @@ export async function getUserPredictions(userId: string, options?: {
     // We'll filter after fetching the data
   }
 
+  console.log('getUserPredictions - userId:', userId);
+  console.log('getUserPredictions - whereConditions:', whereConditions);
+  
   const userPredictions = await db.query.predictions.findMany({
     where: and(...whereConditions),
     orderBy: [desc(predictions.timestampCreated)],
     limit,
     offset,
   });
+  
+  console.log('getUserPredictions - found predictions:', userPredictions.length);
+  console.log('getUserPredictions - first prediction userId:', userPredictions[0]?.userId);
 
   // Get assets for the predictions
   const assetIds = Array.from(new Set(userPredictions.map(pred => pred.assetId)));

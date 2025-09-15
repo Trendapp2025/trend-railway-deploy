@@ -43,55 +43,17 @@ export default function ProfilePage() {
     enabled: !!user,
   });
 
-  // Fetch user predictions with raw data logging
+  // Fetch user predictions using standard queryClient
   const { data: userPredictions, isLoading: predictionsLoading, error: predictionsError } = useQuery<PredictionWithAsset[]>({
-    queryKey: ["predictions"],
-    queryFn: async ({ queryKey }) => {
-      try {
-        const response = await fetch(API_ENDPOINTS.PREDICTIONS(), {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-          },
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const rawData = await response.json();
-        console.log('Raw predictions data from server:', rawData);
-        
-        // Validate the data structure
-        if (!Array.isArray(rawData)) {
-          console.error('Server returned non-array data:', rawData);
-          throw new Error('Server returned invalid data format');
-        }
-        
-        // Check each prediction for required fields
-        rawData.forEach((pred, index) => {
-          if (!pred.asset || typeof pred.asset !== 'object') {
-            console.error(`Prediction ${index} missing asset data:`, pred);
-          }
-          if (!pred.direction || !['up', 'down'].includes(pred.direction)) {
-            console.error(`Prediction ${index} invalid direction:`, pred.direction);
-          }
-          if (!pred.status || !['active', 'expired', 'evaluated'].includes(pred.status)) {
-            console.error(`Prediction ${index} invalid status:`, pred.status);
-          }
-          if (!pred.result || !['pending', 'correct', 'incorrect'].includes(pred.result)) {
-            console.error(`Prediction ${index} invalid result:`, pred.result);
-          }
-        });
-        
-        return rawData;
-      } catch (error) {
-        console.error('Error in custom queryFn:', error);
-        throw error;
-      }
-    },
+    queryKey: [API_ENDPOINTS.PREDICTIONS()],
+    queryFn: getQueryFn({ on401: "returnNull" }),
     enabled: !!user,
     onSuccess: (data) => {
       console.log('Profile Page - Predictions fetched successfully:', data);
+      if (data) {
+        console.log('Profile Page - User ID from context:', user?.id);
+        console.log('Profile Page - First prediction user ID:', data[0]?.userId);
+      }
     },
     onError: (error) => {
       console.error('Profile Page - Failed to fetch predictions:', error);
@@ -204,7 +166,7 @@ export default function ProfilePage() {
                     <CardTitle className="text-xl">{user.username}</CardTitle>
                     <CardDescription className="flex items-center mt-1">
                       <Calendar className="h-3.5 w-3.5 mr-1" />
-                      Joined {profileLoading ? '...' : (user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', { 
+                      Joined {profileLoading ? '...' : (profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString('en-US', { 
                         year: 'numeric', 
                         month: 'long', 
                         day: 'numeric' 
@@ -465,10 +427,6 @@ export default function ProfilePage() {
                       <div className="text-lg font-medium mb-2">No predictions yet</div>
                       <div className="text-sm">
                         Start making predictions to see your history here.
-                      </div>
-                      <div className="mt-4 text-xs text-muted-foreground">
-                        Debug: userPredictions={userPredictions?.length || 0}, 
-                        safePredictions={safePredictions?.length || 0}
                       </div>
                     </div>
                   )}

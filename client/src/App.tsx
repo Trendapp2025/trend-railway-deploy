@@ -18,6 +18,7 @@ import AdminPage from "@/pages/admin-page";
 import ChartPage from "@/pages/chart-page";
 import EmailVerificationPage from "@/pages/email-verification-page";
 import PasswordResetPage from "@/pages/password-reset-page";
+import AdminLoginPage from "@/pages/admin-login-page";
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider } from "./hooks/use-auth";
 import { LanguageProvider } from "./hooks/use-language";
@@ -98,8 +99,9 @@ function Router() {
       <ProtectedRoute path="/leaderboard" component={LeaderboardPage} />
       <ProtectedRoute path="/profile" component={ProfilePage} />
       <Route path="/user/:username" component={UserProfilePage} />
-      <ProtectedRoute path="/admin" component={AdminPage} />
+      <Route path="/admin" component={AdminPage} />
       <Route path="/auth" component={AuthPage} />
+      <Route path="/admin-login" component={AdminLoginPage} />
       <Route path="/verify-email" component={EmailVerificationPage} />
       <Route path="/reset-password" component={PasswordResetPage} />
       <Route component={NotFound} />

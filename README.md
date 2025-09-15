@@ -409,7 +409,7 @@ GET    /api/admin/users                # Get all users
 GET    /api/admin/predictions          # Get all predictions
 POST   /api/admin/predictions/:id/evaluate # Manually evaluate prediction
 GET    /api/admin/assets               # Get all assets
-POST   /api/admin/assets               # Add new asset
+POST   /api/clear/assets               # Add new asset
 PUT    /api/admin/assets/:id           # Update asset
 GET    /api/admin/health               # System health check
 ```

@@ -88,6 +88,7 @@ export const getQueryFn: <T>(options: {
 
     // Use relative URL for API requests
     const url = queryKey[0] as string;
+    console.log('🌐 API Request URL:', url);
     
     // Handle URL encoding for asset symbols in API paths
     let fullUrl = url;
@@ -104,6 +105,9 @@ export const getQueryFn: <T>(options: {
       }
     }
 
+    console.log('🌐 Full API Request URL:', fullUrl);
+    console.log('🌐 Request headers:', headers);
+    
     const res = await fetch(fullUrl, {
       headers,
       credentials: "include",

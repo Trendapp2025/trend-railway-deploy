@@ -1,11 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { buildApiUrl } from '@/lib/api-config';
-import { useAuth } from "@/hooks/use-auth";
 import { useLanguage } from "@/hooks/use-language";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Redirect } from "wouter";
 import { queryClient } from "@/lib/queryClient";
-import AppHeader from "@/components/app-header";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Shield, User2, CoinsIcon, CirclePlus, Edit, Trash2, Check, X, Filter, RefreshCcw, Search, BarChart3, TrendingUp, AlertTriangle, Settings, Database } from "lucide-react";
+import { Shield, User2, CoinsIcon, CirclePlus, Edit, Trash2, Check, X, Filter, RefreshCcw, Search, BarChart3, TrendingUp, AlertTriangle, Settings, Database, Loader2, Award, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Asset, User, Prediction } from "@shared/schema";
 
@@ -53,19 +51,78 @@ interface UserWithProfile extends User {
   };
 }
 
+interface DatabaseUser {
+  id: string;
+  username: string;
+  email: string;
+  role: 'user' | 'admin';
+  emailVerified: boolean;
+}
+
 export default function AdminPage() {
-  const { user } = useAuth();
   const { toast } = useToast();
   const { t } = useLanguage();
+  const [user, setUser] = useState<DatabaseUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [assetFilter, setAssetFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedUserForHistory, setSelectedUserForHistory] = useState<string | null>(null);
   const [userHistoryDialogOpen, setUserHistoryDialogOpen] = useState(false);
+
+  // Check authentication on component mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        console.log('No auth token found');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        console.log('Checking auth with token:', token.substring(0, 20) + '...');
+        
+        // Try to access an admin endpoint to verify admin status
+        const response = await fetch(buildApiUrl('/api/admin/stats'), {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        console.log('Admin stats response status:', response.status);
+
+        if (response.ok) {
+          // If we can access admin stats, we're an admin
+          // Create a mock user object for admin
+          setUser({
+            id: 'admin-user',
+            username: 'Admin',
+            email: 'admin@example.com',
+            role: 'admin',
+            emailVerified: true
+          });
+        } else {
+          console.log('Admin access denied, clearing token');
+          // Not admin or token invalid, clear it
+          localStorage.removeItem('authToken');
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        localStorage.removeItem('authToken');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  // All hooks must be called before any early returns
   const { data: slotConfigsData, isLoading: slotsLoading, refetch: refetchSlots } = useQuery<any[]>({
     queryKey: ["/api/admin/slots"],
-    enabled: activeTab === 'slots',
+    enabled: activeTab === 'slots' && !!user,
   });
   const updateSlotMutation = useMutation({
     mutationFn: async (payload: any) => {
@@ -80,13 +137,6 @@ export default function AdminPage() {
     },
     onSuccess: () => refetchSlots()
   });
-
-
-
-  // If user is not admin, redirect to home
-  if (!user || user.role !== "admin") {
-    return <Redirect to="/" />;
-  }
 
   // Fetch admin dashboard stats
   const { data: adminStats, isLoading: statsLoading } = useQuery<AdminStats>({
@@ -398,6 +448,23 @@ export default function AdminPage() {
     }
   });
 
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p>Verifying admin access...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If user is not admin, redirect to home
+  if (!user || user.role !== "admin") {
+    return <Redirect to="/" />;
+  }
+
   // Filter assets based on type and search query
   const filteredAssets = (assets || []).filter(asset => {
     if (!asset || typeof asset !== 'object') return false;
@@ -467,9 +534,25 @@ export default function AdminPage() {
     });
   };
 
+  const handleLogout = () => {
+    // Clear the auth token
+    localStorage.removeItem('authToken');
+    
+    // Clear user state
+    setUser(null);
+    
+    // Show success message
+    toast({
+      title: "Logged out successfully",
+      description: "You have been logged out of the admin panel.",
+    });
+    
+    // Redirect to home page
+    window.location.href = '/';
+  };
+
   return (
     <div className="min-h-screen bg-background">
-      <AppHeader />
       <main className="container max-w-6xl mx-auto px-4 py-6">
         <div className="flex flex-col space-y-8">
           <div className="flex items-center justify-between">
@@ -482,10 +565,16 @@ export default function AdminPage() {
                 Manage users, assets, and monitor system performance
               </p>
             </div>
-            <Button variant="outline" onClick={refreshData} className="flex items-center">
-              <RefreshCcw className="h-4 w-4 mr-2" />
-              Refresh Data
-            </Button>
+            <div className="flex items-center space-x-3">
+              <Button variant="outline" onClick={refreshData} className="flex items-center">
+                <RefreshCcw className="h-4 w-4 mr-2" />
+                Refresh Data
+              </Button>
+              <Button variant="destructive" onClick={handleLogout} className="flex items-center">
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-6">

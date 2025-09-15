@@ -8,8 +8,9 @@ import {
 import { UserProfile } from "@shared/schema";
 import { getQueryFn, apiRequest, queryClient } from "../lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import { registerWithEmailAndPassword, sendPasswordReset, loginWithEmailAndPassword, logout as firebaseLogout, onAuthStateChange } from "../lib/firebase-auth";
-import { auth } from "../lib/firebase";
 
 import { API_ENDPOINTS } from "@/lib/api-config";
 // Client-side User type (simplified from schema)
@@ -68,15 +69,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       
       if (firebaseUser) {
-        // User is signed in
+        // Check if email is verified before proceeding
+        if (!firebaseUser.emailVerified) {
+          console.log('User email not verified, signing out...');
+          await signOut(auth);
+          setUser(null);
+          setProfile(null);
+          setIsLoading(false);
+          return;
+        }
+        
+        // User is signed in and email is verified
         try {
-          // First set basic Firebase user data
+          // Check if we already have a user with database UUID
+          const currentUser = user;
+          const shouldPreserveDatabaseId = currentUser && 
+            currentUser.id !== firebaseUser.uid && 
+            currentUser.id.length === 36; // UUID length check
+          
+          // First set basic Firebase user data, but preserve database UUID if available
           const userData: User = {
-            id: firebaseUser.uid,
-            username: 'Loading...', // Don't set username from Firebase initially
+            id: shouldPreserveDatabaseId ? currentUser.id : firebaseUser.uid,
+            username: shouldPreserveDatabaseId ? currentUser.username : 'Loading...',
             email: firebaseUser.email!,
             emailVerified: firebaseUser.emailVerified,
-            role: 'user' as const,
+            role: shouldPreserveDatabaseId ? currentUser.role : 'user' as const,
           };
           
           setUser(userData);
@@ -96,31 +113,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (response.ok) {
               const profileData = await response.json();
               console.log('Profile data received:', profileData);
-              // Update user with correct username from backend
-              const updatedUser = {
-                ...userData,
-                username: profileData.username || 'Unknown User',
-                role: profileData.role || userData.role,
-              };
-              console.log('Updating user with:', updatedUser);
-              setUser(updatedUser);
+              
+              // Only update user if we don't already have the correct database UUID
+              if (!shouldPreserveDatabaseId || userData.id !== profileData.id) {
+                // Update user with correct username and ID from backend
+                const updatedUser = {
+                  ...userData,
+                  id: profileData.id, // Use database UUID instead of Firebase UID
+                  username: profileData.username || 'Unknown User',
+                  role: profileData.role || userData.role,
+                };
+                console.log('Updating user with:', updatedUser);
+                setUser(updatedUser);
+              } else {
+                console.log('Preserving existing database UUID, not updating user');
+              }
               setProfile(profileData);
             } else {
               console.warn('Profile response not ok:', response.status, response.statusText);
               const errorText = await response.text();
               console.warn('Profile error response:', errorText);
               // Set a fallback username if profile fetch fails
+              // Try to extract a better username from display name or email
+              let fallbackUsername = 'User';
+              if (firebaseUser.displayName) {
+                // Use display name if available
+                fallbackUsername = firebaseUser.displayName;
+              } else if (firebaseUser.email) {
+                // Try to create a username from email
+                const emailPrefix = firebaseUser.email.split('@')[0];
+                // If email prefix looks like a name, use it, otherwise use default
+                if (emailPrefix.length > 3 && !emailPrefix.includes('.')) {
+                  fallbackUsername = emailPrefix;
+                }
+              }
+              
               setUser({
                 ...userData,
-                username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+                username: fallbackUsername,
+                // Preserve database UUID if we had one, otherwise keep Firebase UID as fallback
+                id: shouldPreserveDatabaseId ? currentUser.id : userData.id,
               });
             }
           } catch (profileError) {
             console.warn('Failed to fetch user profile:', profileError);
             // Set a fallback username if profile fetch fails
+            // Try to extract a better username from display name or email
+            let fallbackUsername = 'User';
+            if (firebaseUser.displayName) {
+              // Use display name if available
+              fallbackUsername = firebaseUser.displayName;
+            } else if (firebaseUser.email) {
+              // Try to create a username from email
+              const emailPrefix = firebaseUser.email.split('@')[0];
+              // If email prefix looks like a name, use it, otherwise use default
+              if (emailPrefix.length > 3 && !emailPrefix.includes('.')) {
+                fallbackUsername = emailPrefix;
+              }
+            }
+            
             setUser({
               ...userData,
-              username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+              username: fallbackUsername,
+              // Preserve database UUID if we had one, otherwise keep Firebase UID as fallback
+              id: shouldPreserveDatabaseId ? currentUser.id : userData.id,
             });
           }
           
@@ -156,6 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const profileData = await response.json();
             setUser({
               ...user,
+              id: profileData.id || user.id, // Preserve database UUID
               username: profileData.username || user.username,
               role: profileData.role || user.role,
             });
@@ -163,6 +220,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } catch (error) {
           console.warn('Failed to fetch user profile:', error);
+          // Set fallback username if profile fetch fails
+          setUser({
+            ...user,
+            username: 'User', // Use default username
+          });
         }
       };
       
@@ -224,15 +286,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: () => {
       toast({
         title: "Registration successful",
-        description: "Welcome! Please check your email to verify your account.",
+        description: "Welcome! Please check your email to verify your account before logging in.",
       });
       
       // Note: Firebase handles email verification automatically
       // Users will receive a verification email from Firebase
-      // User state is automatically updated by Firebase auth listener
-      // Redirect to home page after successful registration
+      // Redirect to login page after successful registration
       setTimeout(() => {
-        window.location.href = '/';
+        window.location.href = '/auth';
       }, 1500);
     },
     onError: (error: Error) => {
@@ -338,6 +399,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.warn('Failed to refresh user profile:', error);
+        // Set fallback username if profile fetch fails
+        setUser({
+          ...user,
+          username: 'User', // Use default username
+        });
       }
     }
   };

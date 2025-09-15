@@ -46,6 +46,7 @@ export const API_ENDPOINTS = {
   
   // User
   USER_PROFILE: () => buildApiUrl('/api/user/profile'),
+  USER_PROFILE_BY_EMAIL: (email: string) => buildApiUrl(`/api/user/profile/email/${encodeURIComponent(email)}`),
   USER_PREDICTIONS: () => buildApiUrl('/api/user/predictions'),
   
   // Leaderboard

@@ -29,6 +29,7 @@ setWebSocketService(wsService);
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
+  'http://localhost:3002', // Add missing port
   'http://localhost:4173',
   'https://natural-pest-production.up.railway.app',
   'https://web-production-88309.up.railway.app',

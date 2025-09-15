@@ -13,6 +13,7 @@ import {
   getRedirectResult
 } from 'firebase/auth';
 import { auth } from './firebase';
+import { API_ENDPOINTS } from './api-config';
 
 export interface AuthUser {
   uid: string;
@@ -34,10 +35,33 @@ export async function registerWithEmailAndPassword(
     // Send email verification
     await sendEmailVerification(userCredential.user);
     
-    // Update display name if provided
-    if (username && userCredential.user) {
-      // Note: Firebase doesn't allow updating displayName immediately after creation
-      // You might need to handle this differently or update it later
+    // Create user in backend database if username is provided
+    if (username) {
+      try {
+        console.log('Creating user in backend database:', { username, email });
+        const response = await fetch(API_ENDPOINTS.REGISTER(), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            username,
+            email,
+            password: 'firebase-user', // Dummy password since Firebase handles auth
+          }),
+        });
+        
+        if (response.ok) {
+          console.log('User created successfully in backend database');
+        } else {
+          const errorData = await response.json();
+          console.warn('Failed to create user in backend database:', errorData);
+          // Don't fail the registration, just log the warning
+        }
+      } catch (backendError) {
+        console.warn('Error creating user in backend database:', backendError);
+        // Don't fail the registration, just log the warning
+      }
     }
     
     return userCredential;
@@ -79,6 +103,48 @@ export async function signInWithGoogle(): Promise<UserCredential> {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     console.log('Google sign-in successful:', result.user);
+    
+    // Create user in backend database if this is a new user
+    if (result.user.email) {
+      try {
+        console.log('Checking if user exists in backend database...');
+        const response = await fetch(API_ENDPOINTS.USER_PROFILE_BY_EMAIL(result.user.email), {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!response.ok) {
+          // User doesn't exist in backend, create them
+          console.log('User not found in backend, creating new user...');
+          const username = result.user.displayName || result.user.email.split('@')[0];
+          const createResponse = await fetch(API_ENDPOINTS.REGISTER(), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              username,
+              email: result.user.email,
+              password: 'google-user', // Dummy password since Google handles auth
+            }),
+          });
+          
+          if (createResponse.ok) {
+            console.log('User created successfully in backend database');
+          } else {
+            const errorData = await createResponse.json();
+            console.warn('Failed to create user in backend database:', errorData);
+          }
+        } else {
+          console.log('User already exists in backend database');
+        }
+      } catch (backendError) {
+        console.warn('Error checking/creating user in backend database:', backendError);
+      }
+    }
+    
     // Google users are automatically verified
     return result;
   } catch (error) {

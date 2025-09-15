@@ -138,9 +138,15 @@ export default function GlobalSentimentCard(): JSX.Element {
   const downPercentage = data?.summary.downPercentage ?? 0;
 
   const needleAngleDeg = useMemo(() => {
+    // Handle neutral sentiment specifically - point straight up (0°)
+    if (data?.summary.overallSentiment === 'neutral') {
+      return 0;
+    }
+    
     // Map 0..100 => -90..+90
+    // 0% = -90° (left), 50% = 0° (center), 100% = +90° (right)
     return (upPercentage / 100) * 180 - 90;
-  }, [upPercentage]);
+  }, [upPercentage, data?.summary.overallSentiment]);
 
   const sentimentLabel = useMemo(() => {
     if (!data) return 'Neutral';

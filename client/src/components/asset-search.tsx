@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Search as SearchIcon } from 'lucide-react';
+import { Search as SearchIcon, X } from 'lucide-react';
 import { Asset } from '@shared/schema';
 import AssetsWithPrices from '@/components/assets-with-prices';
 import { useQuery } from '@tanstack/react-query';
 import { API_ENDPOINTS } from '@/lib/api-config';
+import { useAssetsWithPrices } from '@/hooks/use-assets-with-prices';
 
 export default function AssetSearch() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -25,9 +26,18 @@ export default function AssetSearch() {
 
   const assets = assetsData?.assets || [];
   
+  // Get assets with prices for search results
+  const { assetsWithPrices, isLoading: isCheckingPrices } = useAssetsWithPrices(searchResults);
+  
   // Debug: Log the number of assets fetched
   console.log('Total assets fetched from API:', assets.length);
   console.log('Assets data:', assetsData);
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearching(false);
+  };
 
   const handleSearch = () => {
     if (!assets || !searchQuery.trim()) {
@@ -50,6 +60,7 @@ export default function AssetSearch() {
     if (exactSymbolMatches.length > 0) {
       console.log("Found exact symbol matches:", exactSymbolMatches);
       setSearchResults(exactSymbolMatches);
+      setIsSearching(false);
       return;
     }
     
@@ -91,32 +102,47 @@ export default function AssetSearch() {
     console.log("Search results:", results);
     
     setSearchResults(results);
+    setIsSearching(false);
   };
 
   return (
     <div className="w-full space-y-4">
       <div className="flex gap-2">
-        <Input
-          placeholder="Search for asset by name, symbol, or type"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-          className="flex-1"
-        />
-        <Button onClick={handleSearch} disabled={isLoading}>
+        <div className="relative flex-1">
+          <Input
+            placeholder="Search for asset by name, symbol, or type"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            className="pr-10"
+          />
+          {searchQuery && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 p-0"
+              onClick={clearSearch}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <Button onClick={handleSearch} disabled={isLoading || !searchQuery.trim()}>
           <SearchIcon className="h-4 w-4 mr-2" />
           Search
         </Button>
       </div>
 
-      {isSearching && (
+      {(isSearching || searchResults.length > 0) && (
         <div className="space-y-4">
           <h3 className="text-lg font-medium">
             {searchResults.length === 0 
               ? "No assets found matching your search" 
-              : `Found ${searchResults.length} asset${searchResults.length !== 1 ? 's' : ''}`}
+              : isCheckingPrices 
+                ? `Found ${searchResults.length} asset${searchResults.length !== 1 ? 's' : ''} (checking prices...)`
+                : `Found ${assetsWithPrices.length} asset${assetsWithPrices.length !== 1 ? 's' : ''} with available prices`}
           </h3>
-          <AssetsWithPrices assets={searchResults} />
+          {searchResults.length > 0 && <AssetsWithPrices assets={searchResults} />}
         </div>
       )}
     </div>

@@ -26,7 +26,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { MonthCountdown } from '../components/month-countdown';
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -88,7 +87,13 @@ export default function HomePage() {
                 {user ? (
                   <>
                     {console.log('Home page user:', user)}
-                    {t("home.welcome_user", {username: user.username})}
+                    {user.username === 'Loading...' ? (
+                      <span className="flex items-center gap-2">
+                        <span className="animate-pulse">Loading...</span>
+                      </span>
+                    ) : (
+                      t("home.welcome_user", {username: user.username})
+                    )}
                   </>
                 ) : t("home.welcome")}
               </h1>
@@ -148,10 +153,6 @@ export default function HomePage() {
 
 
 
-        {/* Current Month Progress */}
-        <section className="mb-8">
-          <MonthCountdown />
-        </section>
 
         {/* App Info Section */}
         <section className="mb-8">
@@ -231,8 +232,8 @@ export default function HomePage() {
           </div>
         </section>
         
-        {/* Crypto Assets Section */}
-        <section className="mb-8">
+        {/* Crypto Assets Section - COMMENTED OUT */}
+        {/* <section className="mb-8">
           <h2 className="text-2xl font-bold mb-4 flex items-center">
             <Coins className="h-6 w-6 mr-2 text-primary" />
             {t("asset.crypto_title")}
@@ -258,10 +259,10 @@ export default function HomePage() {
               {t("asset.no_crypto")}
             </div>
           )}
-        </section>
+        </section> */}
 
-        {/* Stock Assets Section */}
-        <section className="mb-8">
+        {/* Stock Assets Section - COMMENTED OUT */}
+        {/* <section className="mb-8">
           <h2 className="text-2xl font-bold mb-4 flex items-center">
             <LineChart className="h-6 w-6 mr-2 text-primary" />
             {t("asset.stock_title")}
@@ -287,10 +288,10 @@ export default function HomePage() {
               {t("asset.no_stock")}
             </div>
           )}
-        </section>
+        </section> */}
 
-        {/* Forex Assets Section */}
-        <section>
+        {/* Forex Assets Section - COMMENTED OUT */}
+        {/* <section>
           <h2 className="text-2xl font-bold mb-4 flex items-center">
             <DollarSign className="h-6 w-6 mr-2 text-primary" />
             {t("asset.forex_title") || "Forex Pairs"}
@@ -316,7 +317,7 @@ export default function HomePage() {
               {t("asset.no_forex") || "No forex pairs available"}
             </div>
           )}
-        </section>
+        </section> */}
       </main>
     </div>
   );
