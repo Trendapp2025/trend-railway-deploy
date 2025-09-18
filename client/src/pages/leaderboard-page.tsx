@@ -21,12 +21,14 @@ import { API_ENDPOINTS } from "@/lib/api-config";
 export default function LeaderboardPage() {
   const { user } = useAuth();
   const [selectedMonth, setSelectedMonth] = useState<string>("");
-  const [includeAdmins, setIncludeAdmins] = useState<boolean>(false);
+  const [includeAdmins, setIncludeAdmins] = useState<boolean>(true);
   
   // Set default includeAdmins based on user role
   useEffect(() => {
     if (user) {
-      setIncludeAdmins(user.role === "admin");
+      // For admins, default to showing all users (including admins)
+      // For regular users, default to showing all users (including admins)
+      setIncludeAdmins(true);
     }
   }, [user]);
   
@@ -94,11 +96,14 @@ export default function LeaderboardPage() {
       console.log('Data array length:', data.data?.length);
       console.log('Data array content:', data.data);
       console.log('Backend returned month:', data.month, 'Requested month:', selectedMonth);
+      console.log('Include admins:', includeAdmins);
       console.log('Data summary:', {
         month: data.month,
         total: data.total,
         dataLength: data.data?.length,
-        firstEntry: data.data?.[0]
+        includeAdmins: data.includeAdmins,
+        firstEntry: data.data?.[0],
+        allUsernames: data.data?.map(entry => entry.username)
       });
       return data;
     },
@@ -390,53 +395,18 @@ export default function LeaderboardPage() {
               </div>
             ) : (() => {
               const hasData = leaderboardData?.data && leaderboardData.data.length > 0;
-              const hasMeaningfulData = hasData && leaderboardData.data.some(entry => entry.totalScore > 0 || entry.totalPredictions > 0);
               
-              // Check if this is likely fallback data (returned month doesn't match selected month)
-              const isFallbackData = selectedMonth && selectedMonth !== "current" && selectedMonth !== "" && 
-                leaderboardData?.month && leaderboardData.month !== selectedMonth;
-              
-              // Check if data looks suspicious (very few users with identical scores across months)
-              // This pattern suggests fallback data when there should be no data for that month
-              const isSuspiciousData = selectedMonth && selectedMonth !== "current" && selectedMonth !== "" && 
-                leaderboardData?.data?.length <= 2 && 
-                leaderboardData.data?.every(entry => 
-                  entry.totalScore === 7 && entry.totalPredictions === 7
-                ) &&
-                leaderboardData.data?.some(entry => entry.username === "Agha Shah Hyder");
-              
-              // Additional check: if it's a 2025 month with suspicious data pattern, treat it as fallback
-              // BUT be more lenient with September 2025 since it's the current month and might have legitimate data
-              const is2025FallbackData = selectedMonth && selectedMonth.startsWith('2025') && 
-                selectedMonth !== "current" && selectedMonth !== "" && 
-                selectedMonth !== "2025-09" && // Don't treat September 2025 as fallback
-                isSuspiciousData;
-              
-              // Additional check: if it's a historical month (not current year) and has very little data
-              // Don't treat 2025 as historical since it's the current year
-              const isHistoricalMonth = selectedMonth && selectedMonth !== "current" && selectedMonth !== "" && 
-                selectedMonth.startsWith('2024') && leaderboardData?.data?.length <= 2;
-              
-              console.log('Has data:', hasData, 'Has meaningful data:', hasMeaningfulData, 'Is fallback data:', isFallbackData, 'Is suspicious data:', isSuspiciousData, 'Is historical month:', isHistoricalMonth);
-              console.log('Selected month:', selectedMonth, 'Returned month:', leaderboardData?.month);
-              console.log('Title will show:', selectedMonth === "" ? "Previous Month" : selectedMonth === "current" ? "Current Month" : getMonthLabel(selectedMonth));
-              console.log('Data entries:', leaderboardData?.data?.map(entry => ({ username: entry.username, totalScore: entry.totalScore, totalPredictions: entry.totalPredictions })));
-              
-              // More precise detection logic
-              console.log('Detection results:', { hasMeaningfulData, isFallbackData, isSuspiciousData, isHistoricalMonth, is2025FallbackData });
-              
-              // Hide data if it's clearly fallback data (month mismatch) OR suspicious pattern in historical months OR 2025 fallback data
-              const shouldHideData = isFallbackData || (isSuspiciousData && isHistoricalMonth) || is2025FallbackData;
-              
-              console.log('Should hide data:', shouldHideData, 'Reason:', {
-                isFallbackData,
-                isSuspiciousData,
-                isHistoricalMonth,
-                is2025FallbackData,
-                combined: isSuspiciousData && isHistoricalMonth
+              console.log('Leaderboard display check:', {
+                hasData,
+                dataLength: leaderboardData?.data?.length,
+                selectedMonth,
+                returnedMonth: leaderboardData?.month,
+                includeAdmins: leaderboardData?.includeAdmins,
+                allUsernames: leaderboardData?.data?.map(entry => entry.username)
               });
               
-              return hasMeaningfulData && !shouldHideData;
+              // Simplified logic: show data if it exists
+              return hasData;
             })() ? (
               <Table>
                 <TableHeader>
@@ -455,7 +425,12 @@ export default function LeaderboardPage() {
                       <TableCell>{getRankBadge(entry.rank)}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <span className="font-medium">{entry.username}</span>
+                          <Link 
+                            href={`/user/${entry.username}`}
+                            className="font-medium text-primary hover:text-primary/80 hover:underline cursor-pointer"
+                          >
+                            {entry.username}
+                          </Link>
                           {entry.isAdmin && (
                             <Badge variant="secondary" className="flex items-center gap-1 text-xs">
                               <Crown className="h-3 w-3" />

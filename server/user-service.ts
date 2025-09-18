@@ -73,6 +73,13 @@ export async function getUserProfile(userId: string, viewerId?: string): Promise
   // Check if viewer is following this user
   let isFollowing = false;
   if (viewerId && viewerId !== userId) {
+    console.log('getUserProfile: Checking follow relationship:', {
+      viewerId,
+      userId,
+      viewerIdType: typeof viewerId,
+      userIdType: typeof userId
+    });
+    
     const follow = await db.query.userFollows.findFirst({
       where: and(
         eq(userFollows.followerId, viewerId),
@@ -80,6 +87,23 @@ export async function getUserProfile(userId: string, viewerId?: string): Promise
       ),
     });
     isFollowing = !!follow;
+    console.log('getUserProfile: Follow status check:', {
+      viewerId,
+      userId,
+      isFollowing,
+      followExists: !!follow,
+      followData: follow
+    });
+    
+    // Let's also check all follow relationships for this viewer
+    const allFollows = await db.query.userFollows.findMany({
+      where: eq(userFollows.followerId, viewerId),
+    });
+    console.log('getUserProfile: All follows for viewer:', allFollows.map(f => ({
+      followerId: f.followerId,
+      followingId: f.followingId,
+      createdAt: f.createdAt
+    })));
   }
 
   // Get user badges - temporarily disabled due to schema mismatch
@@ -138,6 +162,8 @@ export async function updateUserProfile(userId: string, updates: {
 
 // Follow a user
 export async function followUser(followerId: string, followingId: string) {
+  console.log('followUser: Starting follow process:', { followerId, followingId });
+  
   if (followerId === followingId) {
     throw new Error('Cannot follow yourself');
   }
@@ -149,6 +175,8 @@ export async function followUser(followerId: string, followingId: string) {
       eq(userFollows.followingId, followingId)
     ),
   });
+
+  console.log('followUser: Existing follow check:', { existingFollow: !!existingFollow });
 
   if (existingFollow) {
     throw new Error('Already following this user');
@@ -184,6 +212,8 @@ export async function followUser(followerId: string, followingId: string) {
 
 // Unfollow a user
 export async function unfollowUser(followerId: string, followingId: string) {
+  console.log('unfollowUser: Starting unfollow process:', { followerId, followingId });
+  
   if (followerId === followingId) {
     throw new Error('Cannot unfollow yourself');
   }
@@ -195,6 +225,8 @@ export async function unfollowUser(followerId: string, followingId: string) {
       eq(userFollows.followingId, followingId)
     ),
   });
+
+  console.log('unfollowUser: Existing follow check:', { existingFollow: !!existingFollow });
 
   if (!existingFollow) {
     throw new Error('Not following this user');

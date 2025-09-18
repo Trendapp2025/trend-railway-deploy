@@ -154,6 +154,21 @@ export const userBadges = pgTable("user_badges", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Asset suggestions
+export const assetSuggestions = pgTable("asset_suggestions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  symbol: text("symbol").notNull(),
+  type: assetTypeEnum("type").notNull(),
+  note: text("note"),
+  status: text("status").default("pending").notNull(), // pending, approved, rejected
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  idx_status: index("idx_asset_suggestions_status").on(t.status),
+}));
+
 // Monthly score history for charts
 export const monthlyScores = pgTable("monthly_scores", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -211,3 +226,4 @@ export type SlotConfig = typeof slotConfigs.$inferSelect;
 export type EmailVerification = typeof emailVerifications.$inferSelect;
 export type PasswordReset = typeof passwordResets.$inferSelect;
 export type Opinion = typeof opinions.$inferSelect;
+export type AssetSuggestion = typeof assetSuggestions.$inferSelect;

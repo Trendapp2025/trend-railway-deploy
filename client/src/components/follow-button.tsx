@@ -28,8 +28,9 @@ export default function FollowButton({
   
   // Sync with initialFollowing prop changes
   useEffect(() => {
+    console.log('FollowButton: initialFollowing changed to:', initialFollowing, 'for user:', username);
     setIsFollowing(initialFollowing);
-  }, [initialFollowing]);
+  }, [initialFollowing, username]);
   
   // Determine if this is the current user
   const isSelf = user?.id === userId;
@@ -77,14 +78,34 @@ export default function FollowButton({
       });
     },
     onError: (error, { follow }) => {
-      // Revert the optimistic update
-      setIsFollowing(!follow);
+      // Check if the error is "Already following this user" or "Not following this user"
+      const errorMessage = error instanceof Error ? error.message : "";
+      const isAlreadyFollowingError = errorMessage.includes("Already following this user");
+      const isNotFollowingError = errorMessage.includes("Not following this user");
       
-      toast({
-        variant: "destructive",
-        title: follow ? "Failed to follow" : "Failed to unfollow",
-        description: error instanceof Error ? error.message : "Please try again later",
-      });
+      if (isAlreadyFollowingError) {
+        // If already following, keep the state as following
+        setIsFollowing(true);
+        toast({
+          title: "Already following",
+          description: `You are already following ${username}`,
+        });
+      } else if (isNotFollowingError) {
+        // If not following, keep the state as not following
+        setIsFollowing(false);
+        toast({
+          title: "Not following",
+          description: `You are not following ${username}`,
+        });
+      } else {
+        // For other errors, revert the optimistic update
+        setIsFollowing(!follow);
+        toast({
+          variant: "destructive",
+          title: follow ? "Failed to follow" : "Failed to unfollow",
+          description: errorMessage || "Please try again later",
+        });
+      }
     }
   });
   

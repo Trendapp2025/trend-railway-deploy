@@ -18,20 +18,71 @@ export default function AssetSearch() {
   const { data: assetsData, isLoading } = useQuery({
     queryKey: ['/api/assets', 'unlimited'],
     queryFn: async () => {
-              const response = await fetch(`${API_ENDPOINTS.ASSETS()}?page=1&limit=999999`);
+      const response = await fetch(`${API_ENDPOINTS.ASSETS()}?page=1&limit=999999`);
       const data = await response.json();
       return data;
     },
   });
 
-  const assets = assetsData?.assets || [];
+  // Fetch top crypto assets from CoinGecko
+  const { data: coinGeckoData, isLoading: isLoadingCoinGecko } = useQuery({
+    queryKey: ['coingecko-top-crypto'],
+    queryFn: async () => {
+      const response = await fetch(
+        'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&page=1&sparkline=false&x_cg_demo_api_key=CG-g77UEfUkyAFFwCRJJWFCDmSz',
+        {
+          headers: {
+            'User-Agent': 'Trend-App/1.0',
+            'x-cg-demo-api-key': 'CG-g77UEfUkyAFFwCRJJWFCDmSz',
+          },
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch from CoinGecko');
+      }
+      
+      const data = await response.json();
+      
+      // Convert CoinGecko data to Asset format
+      return data.map((coin: any) => ({
+        id: `coingecko-${coin.id}`,
+        name: coin.name,
+        symbol: coin.symbol.toUpperCase(),
+        type: 'crypto' as const,
+        apiSource: 'coingecko',
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        // Add price info for immediate display
+        currentPrice: coin.current_price,
+        priceChange24h: coin.price_change_percentage_24h,
+        marketCap: coin.market_cap,
+        volume24h: coin.total_volume,
+      }));
+    },
+    retry: 2,
+  });
+
+  const dbAssets = assetsData?.assets || [];
+  const coinGeckoAssets = coinGeckoData || [];
+  
+  // Combine database assets with CoinGecko assets, prioritizing CoinGecko for crypto
+  const allAssets = [
+    ...coinGeckoAssets,
+    ...dbAssets.filter(dbAsset => 
+      dbAsset.type !== 'crypto' || 
+      !coinGeckoAssets.some(cgAsset => cgAsset.symbol.toLowerCase() === dbAsset.symbol.toLowerCase())
+    )
+  ];
   
   // Get assets with prices for search results
   const { assetsWithPrices, isLoading: isCheckingPrices } = useAssetsWithPrices(searchResults);
   
   // Debug: Log the number of assets fetched
-  console.log('Total assets fetched from API:', assets.length);
-  console.log('Assets data:', assetsData);
+  console.log('Database assets:', dbAssets.length);
+  console.log('CoinGecko assets:', coinGeckoAssets.length);
+  console.log('Total combined assets:', allAssets.length);
 
   const clearSearch = () => {
     setSearchQuery('');
@@ -40,7 +91,7 @@ export default function AssetSearch() {
   };
 
   const handleSearch = () => {
-    if (!assets || !searchQuery.trim()) {
+    if (!allAssets || !searchQuery.trim()) {
       setSearchResults([]);
       setIsSearching(false);
       return;
@@ -52,7 +103,7 @@ export default function AssetSearch() {
     
     // Make the search more effective with ticker symbols
     // Higher priority for exact ticker matches
-    const exactSymbolMatches = assets.filter(asset => 
+    const exactSymbolMatches = allAssets.filter(asset => 
       asset.symbol.toLowerCase() === query
     );
     
@@ -65,7 +116,7 @@ export default function AssetSearch() {
     }
     
     // Try case-insensitive searches next
-    const results = assets.filter(asset => {
+    const results = allAssets.filter(asset => {
       const assetName = asset.name.toLowerCase();
       const assetSymbol = asset.symbol.toLowerCase();
       const assetType = asset.type.toLowerCase();
@@ -98,7 +149,7 @@ export default function AssetSearch() {
     
     // Log the search results for debugging
     console.log("Search query:", query);
-    console.log("Available assets:", assets);
+    console.log("Available assets:", allAssets);
     console.log("Search results:", results);
     
     setSearchResults(results);
@@ -127,7 +178,7 @@ export default function AssetSearch() {
             </Button>
           )}
         </div>
-        <Button onClick={handleSearch} disabled={isLoading || !searchQuery.trim()}>
+        <Button onClick={handleSearch} disabled={isLoading || isLoadingCoinGecko || !searchQuery.trim()}>
           <SearchIcon className="h-4 w-4 mr-2" />
           Search
         </Button>

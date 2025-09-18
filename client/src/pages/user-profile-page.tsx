@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, Redirect } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -26,7 +26,7 @@ import {
 import AppHeader from '../components/app-header';
 import FollowButton from '../components/follow-button';
 import { useAuth } from '../hooks/use-auth';
-import { apiRequest } from '../lib/queryClient';
+import { apiRequest, getAuthToken } from '../lib/queryClient';
 import BadgeDisplay from '../components/badge-display';
 
 interface UserProfile {
@@ -90,30 +90,98 @@ export default function UserProfilePage() {
   const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('overview');
+  const encodedUsername = username ? encodeURIComponent(username) : '';
+  
+  // Debug logging
+  console.log('UserProfilePage: Component rendered with:', {
+    username,
+    currentUser: currentUser?.username,
+    hasUsername: !!username
+  });
 
   // Fetch user profile
   const { data: userProfile, isLoading: profileLoading, error: profileError, refetch: refetchProfile } = useQuery<UserProfile>({
-    queryKey: [`/api/user/${username}`],
+    queryKey: [`/api/user/${encodedUsername}`, currentUser?.username], // Include current user in query key
     enabled: !!username,
     refetchOnWindowFocus: true,
-    staleTime: 30000, // 30 seconds
+    staleTime: 0, // No caching to force fresh requests
+    refetchInterval: 5000, // Refetch every 5 seconds to get latest data
+    queryFn: async () => {
+      console.log('UserProfilePage: Fetching user profile for:', username);
+      console.log('UserProfilePage: Current user when fetching profile:', currentUser?.username);
+      const response = await apiRequest('GET', `/api/user/${encodedUsername}`);
+      console.log('UserProfilePage: Response status:', response.status);
+      console.log('UserProfilePage: Response headers:', Object.fromEntries(response.headers.entries()));
+      const data = await response.json();
+      console.log('UserProfilePage: User profile data received:', data);
+      console.log('UserProfilePage: isFollowing from API:', data.isFollowing);
+      console.log('UserProfilePage: followersCount from API:', data.followersCount);
+      console.log('UserProfilePage: Full profile data keys:', Object.keys(data));
+      return data;
+    },
   });
 
-  // Fetch user predictions (only if following or viewing own profile)
+  // Force refetch when component mounts to ensure fresh data
+  useEffect(() => {
+    if (username) {
+      console.log('UserProfilePage: Forcing refetch for username:', username);
+      refetchProfile();
+    }
+  }, [username, refetchProfile]);
+
+  // Force refetch when currentUser changes to get updated follow status
+  useEffect(() => {
+    if (username && currentUser?.username) {
+      console.log('UserProfilePage: Current user changed, refetching profile for updated follow status');
+      refetchProfile();
+    }
+  }, [currentUser?.username, username, refetchProfile]);
+
+  // Fetch user predictions
+  const isOwnProfileForQuery = userProfile?.username === currentUser?.username;
+  const canViewPreds = !!(userProfile?.isFollowing || isOwnProfileForQuery);
   const { data: userPredictions, isLoading: predictionsLoading } = useQuery<PredictionWithAsset[]>({
-    queryKey: [`/api/user/${username}/predictions`],
-    enabled: !!username && (userProfile?.isFollowing || userProfile?.username === currentUser?.username),
+    queryKey: [`/api/user/${encodedUsername}/predictions`, userProfile?.isFollowing, currentUser?.username],
+    enabled: !!username, // Always enabled, let backend handle authorization
+    refetchOnWindowFocus: true,
+    queryFn: async () => {
+      console.log('UserProfilePage: Fetching predictions for:', username);
+      console.log('UserProfilePage: Follow status when fetching predictions:', {
+        isFollowing: userProfile?.isFollowing,
+        isOwnProfile: isOwnProfileForQuery,
+        canView: canViewPreds
+      });
+      // Ensure we have a token before requesting (avoids early 403 due to race)
+      let token = await getAuthToken();
+      if (!token) {
+        await new Promise(r => setTimeout(r, 300));
+        token = await getAuthToken();
+      }
+      let response = await apiRequest('GET', `/api/user/${encodedUsername}/predictions`);
+      if (response.status === 403) {
+        console.warn('UserProfilePage: Predictions fetch forbidden (403). Retrying once after ensuring token...');
+        await new Promise(r => setTimeout(r, 300));
+        response = await apiRequest('GET', `/api/user/${encodedUsername}/predictions`);
+        if (response.status === 403) {
+          console.warn('UserProfilePage: Predictions still forbidden after retry. Returning empty list.');
+          return [] as PredictionWithAsset[];
+        }
+      }
+      const data = await response.json();
+      console.log('UserProfilePage: Predictions data received:', data);
+      return Array.isArray(data) ? data : [];
+    },
   });
 
   // Fetch user badges
   const { data: userBadges, isLoading: badgesLoading } = useQuery<UserBadge[]>({
-    queryKey: [`/api/user/${username}/badges`],
+    queryKey: [`/api/user/${encodedUsername}/badges`],
     enabled: !!username,
   });
 
   // Fetch monthly scores
   const { data: monthlyScores, isLoading: scoresLoading } = useQuery<MonthlyScore[]>({
-    queryKey: [`/api/user/${username}/scores`],
+    queryKey: [`/api/user/${encodedUsername}/scores`],
     enabled: !!username,
   });
 
@@ -121,19 +189,22 @@ export default function UserProfilePage() {
   const followMutation = useMutation({
     mutationFn: async ({ username, follow }: { username: string; follow: boolean }) => {
       if (follow) {
-        return apiRequest('POST', `/api/user/${username}/follow`);
+        return apiRequest('POST', `/api/user/${encodedUsername}/follow`);
       } else {
-        return apiRequest('DELETE', `/api/user/${username}/follow`);
+        return apiRequest('DELETE', `/api/user/${encodedUsername}/follow`);
       }
     },
     onSuccess: () => {
+      console.log('UserProfilePage: Follow mutation successful, invalidating queries');
       // Invalidate and refetch all related queries
-      queryClient.invalidateQueries({ queryKey: [`/api/user/${username}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/user/${encodedUsername}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
       
       // Force refetch to ensure data is updated
-      refetchProfile();
-      queryClient.refetchQueries({ queryKey: ["/api/user/profile"] });
+      setTimeout(() => {
+        console.log('UserProfilePage: Refetching profile after follow mutation');
+        refetchProfile();
+      }, 100);
     },
   });
 
@@ -160,9 +231,23 @@ export default function UserProfilePage() {
 
   const isOwnProfile = userProfile?.username === currentUser?.username;
   const canViewPredictions = userProfile?.isFollowing || isOwnProfile;
-  const activePredictions = userPredictions?.filter(p => p.status === "active").length || 0;
-  const evaluatedPredictions = userPredictions?.filter(p => p.status === "evaluated").length || 0;
-  const correctPredictions = userPredictions?.filter(p => p.result === "correct").length || 0;
+  
+  // Debug logging
+  console.log('UserProfilePage: Follow status debug:', {
+    username: userProfile?.username,
+    currentUser: currentUser?.username,
+    isOwnProfile,
+    isFollowing: userProfile?.isFollowing,
+    canViewPredictions,
+    userProfileData: userProfile
+  });
+  // Ensure userPredictions is an array before filtering
+  const safePredictions = Array.isArray(userPredictions) ? userPredictions : [];
+  console.log('UserProfilePage: userPredictions type:', typeof userPredictions, 'isArray:', Array.isArray(userPredictions), 'data:', userPredictions);
+  
+  const activePredictions = safePredictions.filter(p => p.status === "active").length || 0;
+  const evaluatedPredictions = safePredictions.filter(p => p.status === "evaluated").length || 0;
+  const correctPredictions = safePredictions.filter(p => p.result === "correct").length || 0;
   const accuracyPercentage = evaluatedPredictions > 0 ? (correctPredictions / evaluatedPredictions) * 100 : 0;
 
   return (
@@ -212,6 +297,12 @@ export default function UserProfilePage() {
                   {/* Follow Button */}
                   {currentUser && !isOwnProfile && (
                     <div className="flex justify-center">
+                      {console.log('UserProfilePage: Rendering FollowButton with:', {
+                        userId: userProfile?.id,
+                        username: userProfile?.username,
+                        isFollowing: userProfile?.isFollowing,
+                        currentUserId: currentUser?.id
+                      })}
                       <FollowButton
                         userId={userProfile?.id || ''}
                         username={userProfile?.username || ''}
@@ -369,9 +460,9 @@ export default function UserProfilePage() {
 
               <TabsContent value="predictions" className="space-y-6">
                 {canViewPredictions ? (
-                  userPredictions && userPredictions.length > 0 ? (
+                  safePredictions && safePredictions.length > 0 ? (
                     <div className="space-y-4">
-                      {userPredictions.map((prediction) => (
+                      {safePredictions.map((prediction) => (
                         <PredictionCard key={prediction.id} prediction={prediction} />
                       ))}
                     </div>

@@ -5,11 +5,15 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '../.env' });
 
 // Finnhub API configuration
-const FINNHUB_TOKEN = 'd30rl8pr01qnu2qvbpl0d30rl8pr01qnu2qvbplg';
+const FINNHUB_TOKEN = process.env.FINNHUB_TOKEN;
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 
+// CoinGecko API configuration
+const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY;
+const COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3';
+
 // OpenExchange Rates API configuration for forex
-const OPENEXCHANGE_API_KEY = '9655becae9d04bbfbb18c039e305f774';
+const OPENEXCHANGE_API_KEY = process.env.OPENEXCHANGE_API_KEY;
 const OPENEXCHANGE_BASE_URL = 'https://openexchangerates.org/api';
 
 // Cache for storing recent prices to avoid excessive API calls
@@ -38,9 +42,30 @@ export async function getAllAssets() {
 export async function getAssetBySymbol(symbol: string) {
   try {
     console.log(`Looking for asset with symbol: ${symbol}`);
-    const asset = await db.query.assets.findFirst({
+    // Try exact match first
+    let asset = await db.query.assets.findFirst({
       where: eq(assets.symbol, symbol),
     });
+    // Try case-insensitive/lowercase match next (handles 'BTC' -> 'bitcoin')
+    if (!asset) {
+      const lowered = symbol.toLowerCase();
+      asset = await db.query.assets.findFirst({ where: eq(assets.symbol, lowered) });
+    }
+    // Map common crypto tickers to CoinGecko-style symbols stored in DB
+    if (!asset) {
+      const aliasMap: Record<string, string> = {
+        'BTC': 'bitcoin',
+        'WBTC': 'bitcoin',
+        'ETH': 'ethereum',
+        'SOL': 'solana',
+        'ADA': 'cardano',
+        'DOT': 'polkadot',
+      };
+      const mapped = aliasMap[symbol.toUpperCase()];
+      if (mapped) {
+        asset = await db.query.assets.findFirst({ where: eq(assets.symbol, mapped) });
+      }
+    }
     
     if (!asset) {
       console.log(`Asset not found for symbol: ${symbol}`);
@@ -66,7 +91,7 @@ export async function getCurrentPrice(assetId: string): Promise<number | null> {
       orderBy: [desc(assetPrices.timestamp)],
     });
     
-    return latestPrice?.price || null;
+    return latestPrice ? parseFloat(latestPrice.price.toString()) : null;
   } catch (error) {
     console.error('Error fetching current price:', error);
     return null;
@@ -433,13 +458,11 @@ export async function getLiveCryptoPrice(symbol: string): Promise<number | null>
       coinGeckoId = symbolMap[coinGeckoId] || coinGeckoId;
     }
 
+    const cgHeaders: Record<string, string> = { 'User-Agent': 'Trend-App/1.0' };
+    if (COINGECKO_API_KEY) cgHeaders['x-cg-demo-api-key'] = COINGECKO_API_KEY;
     const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoId}&vs_currencies=usd`,
-      {
-        headers: {
-          'User-Agent': 'Trend-App/1.0',
-        },
-      }
+      `${COINGECKO_BASE_URL}/simple/price?ids=${coinGeckoId}&vs_currencies=usd` + (COINGECKO_API_KEY ? `&x_cg_demo_api_key=${COINGECKO_API_KEY}` : ''),
+      { headers: cgHeaders }
     );
 
     if (!response.ok) {
@@ -618,14 +641,36 @@ async function getLiveForexPrice(symbol: string): Promise<number | null> {
 // Fetch and store crypto prices from CoinGecko
 async function fetchCryptoPrices() {
   try {
+    // Get only crypto assets that don't have recent prices
     const cryptoAssets = await db.query.assets.findMany({
       where: eq(assets.type, 'crypto'),
     });
 
-    for (const asset of cryptoAssets) {
+    // Limit to first 20 crypto assets to avoid rate limits
+    const limitedAssets = cryptoAssets.slice(0, 20);
+    console.log(`Fetching prices for ${limitedAssets.length} crypto assets`);
+
+    for (const asset of limitedAssets) {
       try {
+        // Check if we already have recent price data
+        const recentPrice = await db.query.assetPrices.findFirst({
+          where: and(
+            eq(assetPrices.assetId, asset.id),
+            gte(assetPrices.timestamp, new Date(Date.now() - 5 * 60 * 1000)) // 5 minutes ago
+          ),
+          orderBy: [desc(assetPrices.timestamp)],
+        });
+
+        if (recentPrice) {
+          console.log(`Recent price already exists for ${asset.symbol}: ${recentPrice.price}`);
+          continue;
+        }
+
+        const cgHeaders: Record<string, string> = { 'User-Agent': 'Trend-App/1.0' };
+        if (COINGECKO_API_KEY) cgHeaders['x-cg-demo-api-key'] = COINGECKO_API_KEY;
         const response = await fetch(
-          `https://api.coingecko.com/api/v3/simple/price?ids=${asset.symbol.toLowerCase()}&vs_currencies=usd`
+          `${COINGECKO_BASE_URL}/simple/price?ids=${asset.symbol.toLowerCase()}&vs_currencies=usd` + (COINGECKO_API_KEY ? `&x_cg_demo_api_key=${COINGECKO_API_KEY}` : ''),
+          { headers: cgHeaders }
         );
 
         if (!response.ok) {
@@ -638,7 +683,12 @@ async function fetchCryptoPrices() {
 
         if (price) {
           await storeAssetPrice(asset.id, price, 'coingecko');
+          console.log(`Stored price for ${asset.symbol}: ${price}`);
         }
+
+        // Add delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 500));
+
       } catch (error) {
         console.error(`Error fetching crypto price for ${asset.symbol}:`, error);
       }
@@ -655,8 +705,26 @@ async function fetchStockPrices() {
       where: eq(assets.type, 'stock'),
     });
 
-    for (const asset of stockAssets) {
+    // Limit to first 10 stock assets to avoid rate limits
+    const limitedAssets = stockAssets.slice(0, 10);
+    console.log(`Fetching prices for ${limitedAssets.length} stock assets`);
+
+    for (const asset of limitedAssets) {
       try {
+        // Check if we already have recent price data
+        const recentPrice = await db.query.assetPrices.findFirst({
+          where: and(
+            eq(assetPrices.assetId, asset.id),
+            gte(assetPrices.timestamp, new Date(Date.now() - 5 * 60 * 1000)) // 5 minutes ago
+          ),
+          orderBy: [desc(assetPrices.timestamp)],
+        });
+
+        if (recentPrice) {
+          console.log(`Recent price already exists for ${asset.symbol}: ${recentPrice.price}`);
+          continue;
+        }
+
         const response = await fetch(
           `https://query1.finance.yahoo.com/v8/finance/chart/${asset.symbol}?interval=1d&range=1d`
         );
@@ -671,7 +739,12 @@ async function fetchStockPrices() {
 
         if (price) {
           await storeAssetPrice(asset.id, price, 'yahoo');
+          console.log(`Stored price for ${asset.symbol}: ${price}`);
         }
+
+        // Add delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 500));
+
       } catch (error) {
         console.error(`Error fetching stock price for ${asset.symbol}:`, error);
       }
@@ -688,10 +761,19 @@ async function fetchForexPrices() {
       where: eq(assets.type, 'forex'),
     });
 
-    if (forexAssets.length === 0) {
-      console.log('No forex assets found to update');
+    // Filter out OANDA symbols and limit to basic forex pairs
+    const basicForexAssets = forexAssets.filter(asset => 
+      !asset.symbol.startsWith('OANDA:') && 
+      asset.symbol.includes('/') &&
+      ['EUR/USD', 'USD/JPY', 'GBP/USD', 'USD/CHF', 'AUD/USD', 'USD/CAD'].includes(asset.symbol)
+    );
+
+    if (basicForexAssets.length === 0) {
+      console.log('No basic forex assets found to update');
       return;
     }
+
+    console.log(`Fetching prices for ${basicForexAssets.length} basic forex assets`);
 
     // Check rate limit before making any requests
     if (!checkRateLimit()) {
@@ -704,7 +786,7 @@ async function fetchForexPrices() {
 
     // Extract all unique currencies from forex assets
     const currencies = new Set<string>();
-    forexAssets.forEach(asset => {
+    basicForexAssets.forEach(asset => {
       const [base, quote] = asset.symbol.split('/');
       if (base && quote) {
         currencies.add(base);
@@ -743,8 +825,6 @@ async function fetchForexPrices() {
       return;
     }
 
-    console.log(`ExchangeRate-API response:`, JSON.stringify(data, null, 2));
-
     const rates = data.conversion_rates;
     if (!rates) {
       console.error('No conversion_rates data received from ExchangeRate-API');
@@ -753,8 +833,22 @@ async function fetchForexPrices() {
     }
 
     // Process each forex asset
-    for (const asset of forexAssets) {
+    for (const asset of basicForexAssets) {
       try {
+        // Check if we already have recent price data
+        const recentPrice = await db.query.assetPrices.findFirst({
+          where: and(
+            eq(assetPrices.assetId, asset.id),
+            gte(assetPrices.timestamp, new Date(Date.now() - 5 * 60 * 1000)) // 5 minutes ago
+          ),
+          orderBy: [desc(assetPrices.timestamp)],
+        });
+
+        if (recentPrice) {
+          console.log(`Recent price already exists for ${asset.symbol}: ${recentPrice.price}`);
+          continue;
+        }
+
         const [base, quote] = asset.symbol.split('/');
         
         if (!base || !quote) {
@@ -873,11 +967,13 @@ export async function updateAllPrices() {
   console.log('Starting price update...');
   
   try {
-    await Promise.all([
-      fetchCryptoPrices(),
-      fetchStockPrices(),
-      fetchForexPrices(),
-    ]);
+    // First, fetch key asset prices to ensure essential assets have prices
+    await fetchKeyAssetPrices();
+    
+    // Then fetch other prices in smaller batches to avoid rate limits
+    await fetchCryptoPrices();
+    await fetchStockPrices();
+    await fetchForexPrices();
     
     console.log('Price update completed');
   } catch (error) {
@@ -936,11 +1032,156 @@ export async function initializeDefaultAssets() {
   }
 }
 
+// Fetch crypto assets from CoinGecko and add them to database
+export async function fetchCryptoAssetsFromCoinGecko() {
+  try {
+    console.log('Fetching crypto assets from CoinGecko...');
+    
+    // Fetch top 100 cryptocurrencies by market cap
+    const cgHeaders: Record<string, string> = { 'User-Agent': 'Trend-App/1.0' };
+    if (COINGECKO_API_KEY) cgHeaders['x-cg-demo-api-key'] = COINGECKO_API_KEY;
+    const response = await fetch(
+      `${COINGECKO_BASE_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false` + (COINGECKO_API_KEY ? `&x_cg_demo_api_key=${COINGECKO_API_KEY}` : ''),
+      { headers: cgHeaders }
+    );
+
+    if (!response.ok) {
+      console.error(`Failed to fetch crypto assets from CoinGecko: ${response.statusText}`);
+      return;
+    }
+
+    const data = await response.json();
+    console.log(`Fetched ${data.length} crypto assets from CoinGecko`);
+
+    let addedCount = 0;
+    let skippedCount = 0;
+
+    for (const coin of data) {
+      try {
+        // Check if asset already exists
+        const existingAsset = await db.query.assets.findFirst({
+          where: eq(assets.symbol, coin.symbol.toUpperCase()),
+        });
+
+        if (existingAsset) {
+          console.log(`Asset ${coin.symbol} already exists, skipping`);
+          skippedCount++;
+          continue;
+        }
+
+        // Add new crypto asset
+        const newAsset = await db.insert(assets).values({
+          name: coin.name,
+          symbol: coin.symbol.toUpperCase(),
+          type: 'crypto',
+          apiSource: 'coingecko',
+          isActive: true,
+        }).returning();
+
+        console.log(`Added crypto asset: ${coin.name} (${coin.symbol.toUpperCase()})`);
+        addedCount++;
+
+        // Store current price
+        if (coin.current_price) {
+          await storeAssetPrice(newAsset[0].id, coin.current_price, 'coingecko');
+        }
+
+      } catch (error) {
+        console.error(`Error adding asset ${coin.symbol}:`, error);
+      }
+    }
+
+    console.log(`Crypto asset import completed: ${addedCount} added, ${skippedCount} skipped`);
+    return { added: addedCount, skipped: skippedCount };
+
+  } catch (error) {
+    console.error('Error fetching crypto assets from CoinGecko:', error);
+    throw error;
+  }
+}
+
+// Fetch prices for key assets manually
+export async function fetchKeyAssetPrices() {
+  try {
+    console.log('Fetching prices for key assets...');
+    
+    // Key assets to fetch prices for
+    const keyAssets = [
+      { symbol: 'bitcoin', type: 'crypto' },
+      { symbol: 'ethereum', type: 'crypto' },
+      { symbol: 'cardano', type: 'crypto' },
+      { symbol: 'solana', type: 'crypto' },
+      { symbol: 'AAPL', type: 'stock' },
+      { symbol: 'MSFT', type: 'stock' },
+      { symbol: 'GOOGL', type: 'stock' },
+      { symbol: 'EUR/USD', type: 'forex' },
+      { symbol: 'USD/JPY', type: 'forex' },
+      { symbol: 'GBP/USD', type: 'forex' }
+    ];
+
+    for (const asset of keyAssets) {
+      try {
+        // Get asset from database
+        const dbAsset = await db.query.assets.findFirst({
+          where: eq(assets.symbol, asset.symbol),
+        });
+
+        if (!dbAsset) {
+          console.log(`Asset ${asset.symbol} not found in database`);
+          continue;
+        }
+
+        // Check if we already have recent price data
+        const recentPrice = await db.query.assetPrices.findFirst({
+          where: and(
+            eq(assetPrices.assetId, dbAsset.id),
+            gte(assetPrices.timestamp, new Date(Date.now() - 10 * 60 * 1000)) // 10 minutes ago
+          ),
+          orderBy: [desc(assetPrices.timestamp)],
+        });
+
+        if (recentPrice) {
+          console.log(`Recent price already exists for ${asset.symbol}: ${recentPrice.price}`);
+          continue;
+        }
+
+        // Fetch price based on type
+        let price: number | null = null;
+        
+        if (asset.type === 'crypto') {
+          price = await getLiveCryptoPrice(asset.symbol);
+        } else if (asset.type === 'stock') {
+          price = await getLiveStockPrice(asset.symbol);
+        } else if (asset.type === 'forex') {
+          price = await getLiveForexPrice(asset.symbol);
+        }
+
+        if (price && price > 0) {
+          await storeAssetPrice(dbAsset.id, price, asset.type === 'crypto' ? 'coingecko' : asset.type === 'stock' ? 'yahoo' : 'exchangerate');
+          console.log(`Stored price for ${asset.symbol}: ${price}`);
+        } else {
+          console.log(`No price found for ${asset.symbol}`);
+        }
+
+        // Add delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+      } catch (error) {
+        console.error(`Error fetching price for ${asset.symbol}:`, error);
+      }
+    }
+
+    console.log('Key asset price fetch completed');
+  } catch (error) {
+    console.error('Error in fetchKeyAssetPrices:', error);
+  }
+}
+
 // Schedule price updates
 export function schedulePriceUpdates() {
   // Update prices every 5 minutes
   setInterval(updateAllPrices, 5 * 60 * 1000);
   
-  // Initial update
-  setTimeout(updateAllPrices, 1000);
+  // Initial update - fetch key assets first
+  setTimeout(fetchKeyAssetPrices, 2000);
 } 

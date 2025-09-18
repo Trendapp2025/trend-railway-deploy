@@ -85,6 +85,8 @@ import {
   initializeDefaultAssets,
   updateForexPrices,
 } from './price-service';
+import { assetSuggestions, assets as assetTable } from '../shared/schema';
+import { and, eq, desc } from 'drizzle-orm';
 import { 
   getMonthlyLeaderboard, 
   getCurrentMonthLeaderboard,
@@ -453,6 +455,17 @@ const authMiddleware = async (req: express.Request, res: express.Response, next:
           dbUserId: dbUser.id,
           email: decodedToken.email
         });
+        // Sync email verification status from Firebase to DB if needed
+        try {
+          if (decodedToken.email_verified && !dbUser.emailVerified) {
+            await db.update(users).set({ emailVerified: true }).where(eq(users.id, dbUser.id));
+            console.log('Synced emailVerified=true to database for user:', dbUser.id);
+            // Refresh dbUser after update
+            dbUser = await db.query.users.findFirst({ where: eq(users.id, dbUser.id) });
+          }
+        } catch (syncErr) {
+          console.warn('Failed to sync emailVerified flag from Firebase to DB:', syncErr);
+        }
         
         user = {
           userId: dbUser.id, // Use the database UUID, not Firebase UID
@@ -467,19 +480,23 @@ const authMiddleware = async (req: express.Request, res: express.Response, next:
         });
       } catch (firebaseError) {
         console.error('Firebase token verification failed:', firebaseError);
-        return res.status(401).json({ error: 'Invalid Firebase token' });
         
-        // Disable JWT fallback to prevent using Firebase UID as database UUID
-        // If Firebase auth fails, we should not fall back to JWT
-        /*
-        // Fallback to JWT verification
+        // Fallback to JWT verification for database authentication
         try {
+          console.log('Trying JWT verification as fallback...');
           user = extractUserFromToken(authHeader);
+          
+          if (user) {
+            console.log('JWT verification successful:', {
+              userId: user.userId,
+              email: user.email,
+              role: user.role
+            });
+          }
         } catch (jwtError) {
-          console.log('JWT verification also failed');
+          console.log('JWT verification also failed:', jwtError);
           return res.status(401).json({ error: 'Invalid authentication token' });
         }
-        */
       }
     } else {
       return res.status(401).json({ error: 'Invalid authorization header format' });
@@ -505,12 +522,91 @@ const authMiddleware = async (req: express.Request, res: express.Response, next:
 };
 
 // Optional authentication middleware - doesn't require auth but sets user if available
-const optionalAuthMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  const user = extractUserFromToken(req.headers.authorization);
-  if (user) {
-    req.user = user;
+const optionalAuthMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  try {
+    console.log('optionalAuthMiddleware: Processing request for:', req.path);
+    console.log('optionalAuthMiddleware: Authorization header:', req.headers.authorization ? 'Present' : 'Missing');
+    
+    const authHeader = req.headers.authorization;
+    let user = null;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      
+      try {
+        // Try Firebase ID token first
+        const decodedToken = await getAdminAuth().verifyIdToken(token);
+        
+        // Look up the user in the database by email to get the actual UUID
+        console.log('optionalAuthMiddleware: Firebase auth - looking up user by email:', decodedToken.email);
+        
+        // Try exact match first
+        let dbUser = await db.query.users.findFirst({
+          where: eq(users.email, decodedToken.email || ''),
+        });
+        
+        // If not found, try case-insensitive match
+        if (!dbUser) {
+          console.log('optionalAuthMiddleware: Exact email match failed, trying case-insensitive...');
+          const allUsers = await db.query.users.findMany();
+          dbUser = allUsers.find(u => u.email.toLowerCase() === decodedToken.email?.toLowerCase());
+        }
+        
+        if (dbUser) {
+          // Sync email verification status from Firebase to DB if needed (optional auth)
+          try {
+            if (decodedToken.email_verified && !dbUser.emailVerified) {
+              await db.update(users).set({ emailVerified: true }).where(eq(users.id, dbUser.id));
+              console.log('optionalAuthMiddleware: Synced emailVerified=true to DB for user:', dbUser.id);
+              dbUser = await db.query.users.findFirst({ where: eq(users.id, dbUser.id) });
+            }
+          } catch (syncErr) {
+            console.warn('optionalAuthMiddleware: Failed to sync emailVerified flag:', syncErr);
+          }
+          user = {
+            userId: dbUser.id, // Use the database UUID, not Firebase UID
+            email: decodedToken.email || '',
+            role: dbUser.role,
+          };
+          console.log('optionalAuthMiddleware: Firebase auth - found user in database:', {
+            firebaseUid: decodedToken.uid,
+            dbUserId: dbUser.id,
+            email: decodedToken.email
+          });
+        } else {
+          console.log('optionalAuthMiddleware: Firebase user not found in database:', decodedToken.email);
+        }
+      } catch (firebaseError) {
+        console.log('optionalAuthMiddleware: Firebase token verification failed, trying JWT...');
+        
+        // Fallback to JWT verification for database authentication
+        try {
+          user = extractUserFromToken(authHeader);
+          if (user) {
+            console.log('optionalAuthMiddleware: JWT verification successful:', {
+              userId: user.userId,
+              email: user.email,
+              role: user.role
+            });
+          }
+        } catch (jwtError) {
+          console.log('optionalAuthMiddleware: JWT verification also failed:', jwtError);
+        }
+      }
+    }
+    
+    console.log('optionalAuthMiddleware: Final user:', user);
+    
+    if (user) {
+      req.user = user;
+      console.log('optionalAuthMiddleware: Set req.user:', req.user);
+    }
+    
+    next();
+  } catch (error) {
+    console.error('optionalAuthMiddleware: Error:', error);
+    next(); // Continue without authentication
   }
-  next();
 };
 
 // Admin middleware
@@ -989,12 +1085,29 @@ router.post('/user/change-email', authMiddleware, async (req, res) => {
 // Get user profile by username
 router.get('/user/:username', optionalAuthMiddleware, async (req, res) => {
   try {
+    console.log('🚀 GET /user/:username: Processing request:', {
+      username: req.params.username,
+      viewerId: req.user?.userId,
+      userRole: req.user?.role,
+      hasAuthHeader: !!req.headers.authorization
+    });
+    
     const profile = await getUserProfileByUsername(req.params.username, req.user?.userId);
     if (!profile) {
+      console.log('❌ GET /user/:username: User not found');
       return res.status(404).json({ error: 'User not found' });
     }
+    
+    console.log('✅ GET /user/:username: Returning profile:', {
+      username: profile.username,
+      isFollowing: profile.isFollowing,
+      followersCount: profile.followersCount,
+      viewerId: req.user?.userId
+    });
+    
     res.json(profile);
   } catch (error) {
+    console.error('❌ GET /user/:username: Error:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to get user profile' });
   }
 });
@@ -1020,15 +1133,30 @@ router.get('/user/:username/stats', async (req, res) => {
 // Follow user
 router.post('/user/:username/follow', authMiddleware, async (req, res) => {
   try {
+    console.log('🚀 POST /user/:username/follow: Processing request:', {
+      username: req.params.username,
+      followerId: req.user?.userId,
+      userRole: req.user?.role
+    });
+    
     const targetUser = await db.query.users.findFirst({
       where: eq(users.username, req.params.username),
     });
     if (!targetUser) {
+      console.log('❌ POST /user/:username/follow: Target user not found');
       return res.status(404).json({ error: 'User not found' });
     }
+    
+    console.log('✅ POST /user/:username/follow: Target user found:', {
+      targetUserId: targetUser.id,
+      targetUsername: targetUser.username
+    });
+    
     const result = await followUser(requireUser(req).userId, targetUser.id);
+    console.log('✅ POST /user/:username/follow: Follow successful:', result);
     res.json(result);
   } catch (error) {
+    console.error('❌ POST /user/:username/follow: Error:', error);
     res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to follow user' });
   }
 });
@@ -1036,15 +1164,30 @@ router.post('/user/:username/follow', authMiddleware, async (req, res) => {
 // Unfollow user
 router.delete('/user/:username/follow', authMiddleware, async (req, res) => {
   try {
+    console.log('🚀 DELETE /user/:username/follow: Processing request:', {
+      username: req.params.username,
+      followerId: req.user?.userId,
+      userRole: req.user?.role
+    });
+    
     const targetUser = await db.query.users.findFirst({
       where: eq(users.username, req.params.username),
     });
     if (!targetUser) {
+      console.log('❌ DELETE /user/:username/follow: Target user not found');
       return res.status(404).json({ error: 'User not found' });
     }
+    
+    console.log('✅ DELETE /user/:username/follow: Target user found:', {
+      targetUserId: targetUser.id,
+      targetUsername: targetUser.username
+    });
+    
     const result = await unfollowUser(requireUser(req).userId, targetUser.id);
+    console.log('✅ DELETE /user/:username/follow: Unfollow successful:', result);
     res.json(result);
   } catch (error) {
+    console.error('❌ DELETE /user/:username/follow: Error:', error);
     res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to unfollow user' });
   }
 });
@@ -1138,14 +1281,27 @@ router.get('/predictions', authMiddleware, async (req, res) => {
 });
 
 // Get user predictions (if following)
-router.get('/user/:username/predictions', async (req, res) => {
+router.get('/user/:username/predictions', optionalAuthMiddleware, async (req, res) => {
   try {
+    console.log('🔍 GET /user/:username/predictions - Request details:', {
+      username: req.params.username,
+      viewerId: req.user?.userId,
+      viewerRole: req.user?.role,
+      hasAuth: !!req.user
+    });
+
     const user = await db.query.users.findFirst({
       where: eq(users.username, req.params.username),
     });
     if (!user) {
+      console.log('❌ User not found:', req.params.username);
       return res.status(404).json({ error: 'User not found' });
     }
+
+    console.log('✅ User found:', {
+      id: user.id,
+      username: user.username
+    });
 
     // Check if viewer is following this user or is admin
     let canView = false;
@@ -1153,19 +1309,137 @@ router.get('/user/:username/predictions', async (req, res) => {
       // Admins can view any user's predictions
       if (req.user.role === 'admin') {
         canView = true;
+        console.log('✅ Admin access granted');
       } else {
         canView = await isFollowing(req.user.userId, user.id);
+        console.log('🔍 Follow check result:', {
+          followerId: req.user.userId,
+          followingId: user.id,
+          canView
+        });
       }
+    } else {
+      console.log('❌ No authenticated user');
     }
 
     if (!canView) {
+      console.log('❌ Access denied - not following user');
       return res.status(403).json({ error: 'Must follow user to view predictions' });
     }
 
+    console.log('✅ Access granted, fetching predictions...');
     const predictions = await getUserPredictions(user.id);
+    console.log('📊 Predictions fetched:', {
+      count: predictions.length,
+      sample: predictions[0]
+    });
+    
     res.json(predictions);
   } catch (error) {
+    console.error('❌ Error in /user/:username/predictions:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to get predictions' });
+  }
+});
+
+// Get user badges (placeholder: return badges from userBadges or empty list)
+router.get('/user/:username/badges', optionalAuthMiddleware, async (req, res) => {
+  try {
+    const user = await db.query.users.findFirst({ where: eq(users.username, req.params.username) });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    // If you have a userBadges table, query it here. Otherwise return empty list.
+    // const badges = await db.query.userBadges.findMany({ where: eq(userBadges.userId, user.id) });
+    const badges: any[] = [];
+    res.json(badges);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to get badges' });
+  }
+});
+
+// Get user monthly scores (placeholder: derive from predictions or return empty list)
+router.get('/user/:username/scores', optionalAuthMiddleware, async (req, res) => {
+  try {
+    const user = await db.query.users.findFirst({ where: eq(users.username, req.params.username) });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    // If you have a monthlyScores table, query it. For now return empty list.
+    const scores: any[] = [];
+    res.json(scores);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to get scores' });
+  }
+});
+
+// Create asset suggestion (public)
+router.post('/asset-suggestions', optionalAuthMiddleware, async (req, res) => {
+  try {
+    const { name, symbol, type, note } = req.body || {};
+    if (!name || !symbol || !type) {
+      return res.status(400).json({ error: 'name, symbol and type are required' });
+    }
+    const [inserted] = await db.insert(assetSuggestions).values({
+      userId: req.user?.userId || null,
+      name,
+      symbol,
+      type,
+      note,
+      status: 'pending',
+    }).returning();
+    res.json(inserted);
+  } catch (error) {
+    console.error('Error creating asset suggestion:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create suggestion' });
+  }
+});
+
+// List asset suggestions (admin)
+router.get('/admin/asset-suggestions', adminMiddleware, async (req, res) => {
+  try {
+    const suggestions = await db.query.assetSuggestions.findMany({
+      orderBy: [desc(assetSuggestions.createdAt)],
+    });
+    res.json(suggestions);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to fetch suggestions' });
+  }
+});
+
+// Approve suggestion (admin) -> create asset
+router.post('/admin/asset-suggestions/:id/approve', adminMiddleware, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const suggestion = await db.query.assetSuggestions.findFirst({ where: eq(assetSuggestions.id, id) });
+    if (!suggestion) return res.status(404).json({ error: 'Suggestion not found' });
+
+    // Create asset if not exists
+    const existing = await db.query.assets.findFirst({ where: eq(assetTable.symbol, suggestion.symbol) });
+    if (!existing) {
+      await db.insert(assetTable).values({
+        name: suggestion.name,
+        symbol: suggestion.symbol,
+        type: suggestion.type as any,
+        apiSource: suggestion.type === 'crypto' ? 'coingecko' : (suggestion.type === 'stock' ? 'yahoo' : 'exchangerate'),
+        isActive: true,
+      });
+    }
+
+    const [updated] = await db.update(assetSuggestions).set({ status: 'approved' }).where(eq(assetSuggestions.id, id)).returning();
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to approve suggestion' });
+  }
+});
+
+// Reject suggestion (admin)
+router.post('/admin/asset-suggestions/:id/reject', adminMiddleware, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const [updated] = await db.update(assetSuggestions).set({ status: 'rejected' }).where(eq(assetSuggestions.id, id)).returning();
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to reject suggestion' });
   }
 });
 
@@ -3151,6 +3425,35 @@ router.get('/admin/badges/stats', adminMiddleware, async (req, res) => {
     res.json(stats);
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to get badge statistics' });
+  }
+});
+
+// Import crypto assets from CoinGecko
+router.post('/admin/crypto/import', adminMiddleware, async (req, res) => {
+  try {
+    const { fetchCryptoAssetsFromCoinGecko } = await import('./price-service');
+    const result = await fetchCryptoAssetsFromCoinGecko();
+    res.json({ 
+      success: true, 
+      message: `Crypto import completed: ${result?.added || 0} added, ${result?.skipped || 0} skipped`,
+      result 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to import crypto assets' });
+  }
+});
+
+// Fetch prices for key assets
+router.post('/admin/prices/fetch-key', adminMiddleware, async (req, res) => {
+  try {
+    const { fetchKeyAssetPrices } = await import('./price-service');
+    await fetchKeyAssetPrices();
+    res.json({ 
+      success: true, 
+      message: 'Key asset prices fetched successfully'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to fetch key asset prices' });
   }
 });
 

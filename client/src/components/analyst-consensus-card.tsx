@@ -218,6 +218,11 @@ export default function AnalystConsensusCard({ assetSymbol, data, loading }: Ana
     return 'border-yellow-500/20 bg-yellow-500/10';
   };
 
+  // Hide/replace HOLD with Neutral for display purposes
+  const recommendationDisplay = (displayData.recommendation || '').toLowerCase().includes('hold')
+    ? 'Neutral'
+    : (displayData.recommendation || '');
+
   if (isLoadingData) {
     return (
       <div className="bg-muted/50 p-6 rounded-lg">
@@ -289,7 +294,6 @@ export default function AnalystConsensusCard({ assetSymbol, data, loading }: Ana
                 >
                   <RefreshCw className="h-4 w-4 text-blue-500" />
                 </button>
-                <Info className="h-4 w-4 text-blue-500" />
               </div>
             </div>
           </CardHeader>
@@ -342,16 +346,16 @@ export default function AnalystConsensusCard({ assetSymbol, data, loading }: Ana
             </div>
 
             {/* Recommendation Box */}
-            <div className={`border rounded-lg p-3 mb-4 ${getRecommendationBgColor(displayData.recommendation || '')}`}>
-              <div className={`font-medium ${getRecommendationColor(displayData.recommendation || '')}`}>
-                {displayData.recommendation || 'Neutral'}
+            <div className={`border rounded-lg p-3 mb-4 ${getRecommendationBgColor(recommendationDisplay)}`}>
+              <div className={`font-medium ${getRecommendationColor(recommendationDisplay)}`}>
+                {recommendationDisplay || 'Neutral'}
               </div>
             </div>
 
             {/* Disclaimer */}
             <div className="text-xs text-muted-foreground">
               {t('analyst.recommendation.disclaimer', { count: displayData.analystCount || 0, symbol: assetSymbol.toUpperCase() })} {' '}
-              <span className="text-blue-600 font-medium">{displayData.recommendation || 'Neutral'}</span>
+              <span className="text-blue-600 font-medium">{recommendationDisplay || 'Neutral'}</span>
             </div>
           </CardContent>
         </Card>
@@ -409,28 +413,6 @@ export default function AnalystConsensusCard({ assetSymbol, data, loading }: Ana
                     dot={false}
                     connectNulls={false}
                     data={chartData}
-                  />
-                  {/* Up predictions line (dotted green) - shows bullish trend */}
-                  <Line 
-                    type="monotone" 
-                    dataKey="upProjection" 
-                    stroke="#22c55e" 
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={{ fill: '#22c55e', r: 3 }}
-                    connectNulls={true}
-                    data={predictionData}
-                  />
-                  {/* Down predictions line (dotted red) - shows bearish trend */}
-                  <Line 
-                    type="monotone" 
-                    dataKey="downProjection" 
-                    stroke="#ef4444" 
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={{ fill: '#ef4444', r: 3 }}
-                    connectNulls={true}
-                    data={predictionData}
                   />
                 </LineChart>
               </ResponsiveContainer>

@@ -6,8 +6,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Edit, Save, X, User2 } from "lucide-react";
+import { Edit, Save, X, User2, UploadCloud } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { storage } from "@/lib/firebase";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
 import { API_ENDPOINTS } from "@/lib/api-config";
 interface ProfileEditFormProps {
@@ -78,6 +80,25 @@ export default function ProfileEditForm({
     }
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsSubmitting(true);
+      const ext = file.name.split('.').pop() || 'jpg';
+      const path = `avatars/${username}-${Date.now()}.${ext}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file, { contentType: file.type });
+      const url = await getDownloadURL(storageRef);
+      setAvatar(url);
+      toast({ title: "Image uploaded", description: "Avatar updated. Click Save to apply." });
+    } catch (err) {
+      toast({ title: "Upload failed", description: err instanceof Error ? err.message : 'Unable to upload image', variant: 'destructive' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -102,16 +123,28 @@ export default function ProfileEditForm({
                 </AvatarFallback>
               )}
             </Avatar>
-            <div className="flex-1">
-              <Label htmlFor="avatar">Avatar URL</Label>
-              <Input
-                id="avatar"
-                type="url"
-                placeholder="https://example.com/avatar.jpg"
-                value={avatar}
-                onChange={(e) => setAvatar(e.target.value)}
-                className="mt-1"
-              />
+            <div className="flex-1 space-y-2">
+              <div>
+                <Label htmlFor="avatarFile">Upload Profile Image</Label>
+                <div className="mt-1 flex items-center gap-2">
+                  <Input id="avatarFile" type="file" accept="image/*" onChange={handleFileChange} />
+                  <Button type="button" variant="outline" disabled className="flex items-center">
+                    <UploadCloud className="h-4 w-4 mr-2" />
+                    Upload
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Choose an image; it will be uploaded to Firebase Storage.</p>
+              </div>
+              <div>
+                <Label htmlFor="avatar">Or paste Avatar URL</Label>
+                <Input
+                  id="avatar"
+                  type="url"
+                  placeholder="https://example.com/avatar.jpg"
+                  value={avatar}
+                  onChange={(e) => setAvatar(e.target.value)}
+                />
+              </div>
             </div>
           </div>
 

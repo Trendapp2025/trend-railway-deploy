@@ -19,13 +19,15 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { Textarea } from "@/components/ui/textarea";
 
 const suggestAssetSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
-  symbol: z.string().min(1, "Symbol is required").max(10, "Symbol cannot exceed 10 characters"),
-  type: z.enum(["stock", "cryptocurrency"], {
+  symbol: z.string().min(1, "Symbol is required").max(20, "Symbol cannot exceed 20 characters"),
+  type: z.enum(["stock", "crypto", "forex"], {
     required_error: "Please select an asset type",
   }),
+  note: z.string().max(500).optional(),
 });
 
 type SuggestAssetData = z.infer<typeof suggestAssetSchema>;
@@ -42,23 +44,19 @@ export default function SuggestAssetForm() {
       name: "",
       symbol: "",
       type: "stock",
+      note: "",
     },
   });
 
   // Submit handler
   const mutation = useMutation({
     mutationFn: async (data: SuggestAssetData) => {
-      // In a real app, this would go to a database
-      // For now, we'll just simulate success
-      // The next step would be creating a suggestions table in the database
-      
-      // Simulate API call with a delay
-      return new Promise<void>((resolve) => {
-        setTimeout(() => {
-          console.log("Asset suggestion submitted:", data);
-          resolve();
-        }, 1000);
-      });
+      const res = await apiRequest('POST', '/api/asset-suggestions', data);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to submit suggestion');
+      }
+      return res.json();
     },
     onSuccess: () => {
       toast({
@@ -125,7 +123,7 @@ export default function SuggestAssetForm() {
             <FormItem>
               <FormLabel>Ticker Symbol</FormLabel>
               <FormControl>
-                <Input placeholder="e.g. TSM" {...field} />
+                <Input placeholder="e.g. TSM or BTC or EUR/USD" {...field} />
               </FormControl>
               <FormDescription>
                 The ticker symbol used on exchanges
@@ -152,11 +150,29 @@ export default function SuggestAssetForm() {
                 </FormControl>
                 <SelectContent>
                   <SelectItem value="stock">Stock</SelectItem>
-                  <SelectItem value="cryptocurrency">Cryptocurrency</SelectItem>
+                  <SelectItem value="crypto">Cryptocurrency</SelectItem>
+                  <SelectItem value="forex">Forex</SelectItem>
                 </SelectContent>
               </Select>
               <FormDescription>
-                Select whether this is a stock or cryptocurrency
+                Select the asset class
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="note"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Note (optional)</FormLabel>
+              <FormControl>
+                <Textarea placeholder="Any additional details" {...field} />
+              </FormControl>
+              <FormDescription>
+                Why should we add this asset?
               </FormDescription>
               <FormMessage />
             </FormItem>

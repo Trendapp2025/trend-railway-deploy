@@ -39,7 +39,7 @@ export default function ProfilePage() {
   
   // Fetch user profile data
   const { data: userProfile, isLoading: profileLoading } = useQuery<UserProfile>({
-    queryKey: ["user", "profile"],
+    queryKey: ["/api/user/profile"],
     enabled: !!user,
   });
 

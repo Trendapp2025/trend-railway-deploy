@@ -7,19 +7,6 @@ import { sql } from 'drizzle-orm';
 
 // Use the slot service functions instead of duplicating logic
 
-// Map new duration values to old database values for backward compatibility
-function mapDurationToLegacy(duration: 'short' | 'medium' | 'long'): '1h' | '3h' | '6h' | '24h' | '48h' | '1w' | '1m' | '3m' | '6m' | '1y' {
-  switch (duration) {
-    case 'short':
-      return '1w'; // 1 week
-    case 'medium':
-      return '1m'; // 1 month
-    case 'long':
-      return '3m'; // 3 months
-    default:
-      return '1w';
-  }
-}
 
 export interface CreatePredictionInput {
   userId: string;
@@ -136,7 +123,7 @@ export async function createPrediction(input: CreatePredictionInput) {
     where: and(
       eq(predictions.userId, userId),
       eq(predictions.assetId, asset.id),
-      eq(predictions.duration, mapDurationToLegacy(duration)), // Map duration for query
+      eq(predictions.duration, duration), // Use the new enum values directly
       eq(predictions.slotNumber, slotNumber),
       eq(predictions.slotStart, selectedSlot.slotStart.toJSDate())
     ),
@@ -173,7 +160,7 @@ export async function createPrediction(input: CreatePredictionInput) {
     userId,
     assetId: asset.id,
     direction,
-    duration: mapDurationToLegacy(duration), // Map new duration to legacy database value
+    duration: duration, // Use the new enum values directly
     slotNumber: slotNumber,
     slotStart: selectedSlot.slotStart.toJSDate(),
     slotEnd: selectedSlot.slotEnd.toJSDate(),
@@ -343,7 +330,7 @@ export async function getSentimentData(assetSymbol: string, duration: string): P
   const allPredictions = await db.query.predictions.findMany({
     where: and(
       eq(predictions.assetId, asset.id),
-      eq(predictions.duration, duration as "1h" | "3h" | "6h" | "24h" | "48h" | "1w" | "1m" | "3m" | "6m" | "1y")
+      eq(predictions.duration, duration as "short" | "medium" | "long")
     ),
   });
 

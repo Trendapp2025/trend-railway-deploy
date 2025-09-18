@@ -12,10 +12,140 @@ interface AssetCardProps {
 }
 
 export default function AssetCard({ asset }: AssetCardProps) {
-  // Fetch real-time price for this asset
+  // Check if asset already has price data from CoinGecko
+  const hasDirectPrice = (asset as any).currentPrice !== undefined;
+  
+  // Fetch real-time price for this asset from CoinGecko
   const { data: priceData, isLoading: isLoadingPrice } = useQuery<{ symbol: string; price: number }>({
-    queryKey: [`/api/assets/${asset.symbol}/price`],
+    queryKey: [`coingecko-price-${asset.symbol}`],
+    queryFn: async () => {
+      // If asset already has price data, use it
+      if (hasDirectPrice) {
+        return { symbol: asset.symbol, price: (asset as any).currentPrice };
+      }
+
+      if (asset.type !== 'crypto') {
+        return { symbol: asset.symbol, price: 0 };
+      }
+
+      // Map common symbols to CoinGecko IDs
+      const symbolMap: { [key: string]: string } = {
+        'bitcoin': 'bitcoin',
+        'btc': 'bitcoin',
+        'ethereum': 'ethereum',
+        'eth': 'ethereum',
+        'cardano': 'cardano',
+        'ada': 'cardano',
+        'solana': 'solana',
+        'sol': 'solana',
+        'polkadot': 'polkadot',
+        'dot': 'polkadot',
+        'avalanche-2': 'avalanche-2',
+        'avax': 'avalanche-2',
+        'chainlink': 'chainlink',
+        'link': 'chainlink',
+        'cosmos': 'cosmos',
+        'atom': 'cosmos',
+        'near': 'near',
+        'fantom': 'fantom',
+        'ftm': 'fantom',
+        'algorand': 'algorand',
+        'algo': 'algorand',
+        'vechain': 'vechain',
+        'vet': 'vechain',
+        'internet-computer': 'internet-computer',
+        'icp': 'internet-computer',
+        'filecoin': 'filecoin',
+        'fil': 'filecoin',
+        'aave': 'aave',
+        'uniswap': 'uniswap',
+        'uni': 'uniswap',
+        'sushi': 'sushi',
+        'compound-governance-token': 'compound-governance-token',
+        'comp': 'compound-governance-token',
+        'maker': 'maker',
+        'mkr': 'maker',
+        'havven': 'havven',
+        'snx': 'havven',
+        'yearn-finance': 'yearn-finance',
+        'yfi': 'yearn-finance',
+        'curve-dao-token': 'curve-dao-token',
+        'crv': 'curve-dao-token',
+        '1inch': '1inch',
+        'balancer': 'balancer',
+        'bal': 'balancer',
+        'republic-protocol': 'republic-protocol',
+        'ren': 'republic-protocol',
+        'kyber-network-crystal': 'kyber-network-crystal',
+        'knc': 'kyber-network-crystal',
+        '0x': '0x',
+        'zrx': '0x',
+        'bancor': 'bancor',
+        'bnt': 'bancor',
+        'loopring': 'loopring',
+        'lrc': 'loopring',
+        'enjincoin': 'enjincoin',
+        'enj': 'enjincoin',
+        'decentraland': 'decentraland',
+        'mana': 'decentraland',
+        'the-sandbox': 'the-sandbox',
+        'sand': 'the-sandbox',
+        'axie-infinity': 'axie-infinity',
+        'axs': 'axie-infinity',
+        'chiliz': 'chiliz',
+        'chz': 'chiliz',
+        'flow': 'flow',
+        'theta-token': 'theta-token',
+        'theta': 'theta-token',
+        'tezos': 'tezos',
+        'xtz': 'tezos',
+        'eos': 'eos',
+        'tron': 'tron',
+        'trx': 'tron',
+        'stellar': 'stellar',
+        'xlm': 'stellar',
+        'ripple': 'ripple',
+        'xrp': 'ripple',
+        'litecoin': 'litecoin',
+        'ltc': 'litecoin',
+        'bitcoin-cash': 'bitcoin-cash',
+        'bch': 'bitcoin-cash',
+        'dogecoin': 'dogecoin',
+        'doge': 'dogecoin',
+        'shiba-inu': 'shiba-inu',
+        'shib': 'shiba-inu',
+        'pepe': 'pepe',
+        'floki': 'floki',
+        'bonk': 'bonk'
+      };
+
+      const coinGeckoId = symbolMap[asset.symbol.toLowerCase()] || asset.symbol.toLowerCase();
+      
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoId}&vs_currencies=usd&x_cg_demo_api_key=CG-g77UEfUkyAFFwCRJJWFCDmSz`,
+        {
+          headers: {
+            'User-Agent': 'Trend-App/1.0',
+            'x-cg-demo-api-key': 'CG-g77UEfUkyAFFwCRJJWFCDmSz',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch price');
+      }
+
+      const data = await response.json();
+      const price = data[coinGeckoId]?.usd;
+
+      if (price === undefined || price === null) {
+        throw new Error('Price not found');
+      }
+
+      return { symbol: asset.symbol, price };
+    },
     refetchInterval: 30000, // Refresh every 30 seconds
+    retry: 2,
   });
 
   // Fetch price history for sparkline

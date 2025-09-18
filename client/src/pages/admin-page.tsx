@@ -257,6 +257,56 @@ export default function AdminPage() {
     },
   });
 
+  // Suggested Assets (admin)
+  const { data: suggestedAssets, isLoading: suggestedLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/asset-suggestions"],
+    enabled: !!user,
+    queryFn: async () => {
+      const token = localStorage.getItem('authToken');
+      if (!token) throw new Error("No authentication token found");
+      const res = await fetch(buildApiUrl('/api/admin/asset-suggestions'), {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }
+  });
+
+  const approveSuggestion = useMutation({
+    mutationFn: async (id: string) => {
+      const token = localStorage.getItem('authToken');
+      if (!token) throw new Error("No authentication token found");
+      const res = await fetch(buildApiUrl(`/api/admin/asset-suggestions/${id}/approve`), {
+        method: 'POST',
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/asset-suggestions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/assets"] });
+      toast({ title: "Suggestion approved", description: "Asset created from suggestion." });
+    }
+  });
+
+  const rejectSuggestion = useMutation({
+    mutationFn: async (id: string) => {
+      const token = localStorage.getItem('authToken');
+      if (!token) throw new Error("No authentication token found");
+      const res = await fetch(buildApiUrl(`/api/admin/asset-suggestions/${id}/reject`), {
+        method: 'POST',
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/asset-suggestions"] });
+      toast({ title: "Suggestion rejected" });
+    }
+  });
+
   // Fetch user predictions for history
   const { data: userPredictions, isLoading: userPredictionsLoading } = useQuery<PredictionWithDetails[]>({
     queryKey: ["/api/admin/users", selectedUserForHistory, "predictions"],
@@ -448,6 +498,84 @@ export default function AdminPage() {
     }
   });
 
+  // Import crypto assets mutation
+  const importCryptoMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        throw new Error("No authentication token found");
+      }
+      
+      const response = await fetch(buildApiUrl('/api/admin/crypto/import'), {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP ${response.status}: Failed to import crypto assets`);
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Crypto Import Successful",
+        description: data.message || `Imported ${data.result?.added || 0} crypto assets`,
+      });
+      // Refresh asset data
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/assets"] });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Failed to import crypto assets",
+        description: "There was an error importing crypto assets from CoinGecko.",
+      });
+    }
+  });
+
+  // Fetch key asset prices mutation
+  const fetchKeyPricesMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        throw new Error("No authentication token found");
+      }
+      
+      const response = await fetch(buildApiUrl('/api/admin/prices/fetch-key'), {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP ${response.status}: Failed to fetch key asset prices`);
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Key Prices Fetched",
+        description: data.message || "Successfully fetched prices for key assets",
+      });
+      // Refresh asset data
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/assets"] });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Failed to fetch key prices",
+        description: "There was an error fetching prices for key assets.",
+      });
+    }
+  });
+
   // Show loading state
   if (isLoading) {
     return (
@@ -604,6 +732,10 @@ export default function AdminPage() {
                   <Database className="h-4 w-4 mr-2" />
                   Slots
                 </TabsTrigger>
+                <TabsTrigger value="suggested" className="flex items-center">
+                  <CirclePlus className="h-4 w-4 mr-2" />
+                  Suggested Assets
+                </TabsTrigger>
               </TabsList>
 
               {/* Dashboard Tab */}
@@ -681,6 +813,60 @@ export default function AdminPage() {
                             </>
                           ) : (
                             'Backfill Badges'
+                          )}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Import Crypto</CardTitle>
+                      <CoinsIcon className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <div className="text-sm text-muted-foreground">Import top 100 crypto from CoinGecko</div>
+                        <Button 
+                          size="sm" 
+                          onClick={() => importCryptoMutation.mutate()}
+                          disabled={importCryptoMutation.isPending}
+                          className="w-full"
+                        >
+                          {importCryptoMutation.isPending ? (
+                            <>
+                              <RefreshCcw className="h-4 w-4 mr-2 animate-spin" />
+                              Importing...
+                            </>
+                          ) : (
+                            'Import Crypto Assets'
+                          )}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Fetch Key Prices</CardTitle>
+                      <RefreshCcw className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <div className="text-sm text-muted-foreground">Fetch prices for Bitcoin, Ethereum, etc.</div>
+                        <Button 
+                          size="sm" 
+                          onClick={() => fetchKeyPricesMutation.mutate()}
+                          disabled={fetchKeyPricesMutation.isPending}
+                          className="w-full"
+                        >
+                          {fetchKeyPricesMutation.isPending ? (
+                            <>
+                              <RefreshCcw className="h-4 w-4 mr-2 animate-spin" />
+                              Fetching...
+                            </>
+                          ) : (
+                            'Fetch Key Prices'
                           )}
                         </Button>
                       </div>
@@ -1115,6 +1301,54 @@ export default function AdminPage() {
                       Showing {filteredAssets?.length || 0} of {assets?.length || 0} assets
                     </div>
                   </CardFooter>
+                </Card>
+              </TabsContent>
+
+              {/* Suggested Assets Tab */}
+              <TabsContent value="suggested">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Suggested Assets</CardTitle>
+                    <CardDescription>Review and process user submissions</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {suggestedLoading ? (
+                      <div className="space-y-4">
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                      </div>
+                    ) : (
+                      <div className="rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Name</TableHead>
+                              <TableHead>Symbol</TableHead>
+                              <TableHead>Type</TableHead>
+                              <TableHead>Note</TableHead>
+                              <TableHead>Status</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {(Array.isArray(suggestedAssets) ? suggestedAssets : []).map((s: any) => (
+                              <TableRow key={s.id}>
+                                <TableCell className="font-medium">{s.name}</TableCell>
+                                <TableCell>{s.symbol}</TableCell>
+                                <TableCell><Badge variant="outline">{s.type}</Badge></TableCell>
+                                <TableCell className="max-w-sm truncate" title={s.note}>{s.note || '-'}</TableCell>
+                                <TableCell>
+                                  <Badge variant={s.status === 'pending' ? 'secondary' : s.status === 'approved' ? 'default' : 'destructive'}>
+                                    {s.status}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </CardContent>
                 </Card>
               </TabsContent>
 

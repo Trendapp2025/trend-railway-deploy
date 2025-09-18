@@ -136,17 +136,13 @@ export default function GlobalSentimentCard(): JSX.Element {
 
   const upPercentage = data?.summary.upPercentage ?? 0;
   const downPercentage = data?.summary.downPercentage ?? 0;
+  // Net balance: right (Up) positive, left (Down) negative. Range -100..+100
+  const balancePct = Math.max(-100, Math.min(100, Math.round(upPercentage - downPercentage)));
 
   const needleAngleDeg = useMemo(() => {
-    // Handle neutral sentiment specifically - point straight up (0°)
-    if (data?.summary.overallSentiment === 'neutral') {
-      return 0;
-    }
-    
-    // Map 0..100 => -90..+90
-    // 0% = -90° (left), 50% = 0° (center), 100% = +90° (right)
-    return (upPercentage / 100) * 180 - 90;
-  }, [upPercentage, data?.summary.overallSentiment]);
+    // Map balance -100..+100 => -90..+90
+    return (balancePct / 100) * 90;
+  }, [balancePct]);
 
   const sentimentLabel = useMemo(() => {
     if (!data) return 'Neutral';
@@ -236,7 +232,9 @@ export default function GlobalSentimentCard(): JSX.Element {
                 </div>
                 {/* Center labels */}
                 <div className="absolute left-1/2 -translate-x-1/2 bottom-6 text-center">
-                  <div className="text-3xl font-bold">{upPercentage}</div>
+                  <div className={`text-3xl font-bold ${balancePct > 0 ? 'text-green-600' : balancePct < 0 ? 'text-red-600' : ''}`}>
+                    {balancePct > 0 ? `+${balancePct}` : balancePct}
+                  </div>
                   <div className="text-xs text-muted-foreground mt-1">{t('global.now')}: {sentimentLabel}</div>
                 </div>
                 {/* Left label - Down */}

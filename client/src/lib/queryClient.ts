@@ -18,7 +18,7 @@ async function throwIfResNotOk(res: Response) {
 }
 
 // Get Firebase ID token for authentication
-async function getAuthToken(): Promise<string | null> {
+export async function getAuthToken(): Promise<string | null> {
   try {
     console.log('🔐 Getting Firebase ID token...');
     const token = await getIdToken();

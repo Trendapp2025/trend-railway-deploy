@@ -14,6 +14,7 @@ import { useToast } from '../hooks/use-toast';
 import { useLanguage } from '../hooks/use-language';
 
 import { API_ENDPOINTS } from "@/lib/api-config";
+import { apiRequest } from "@/lib/queryClient";
 const predictionSchema = z.object({
   assetSymbol: z.string().min(1, 'Asset is required'),
   duration: z.string().min(1, 'Duration is required'),
@@ -67,28 +68,16 @@ export function EnhancedPredictionForm({ assetSymbol, onSuccess }: EnhancedPredi
     mutationFn: async (data: PredictionFormData) => {
       console.log('Creating prediction with data:', data);
       
-      const response = await fetch(API_ENDPOINTS.PREDICTIONS(), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-        },
-        body: JSON.stringify({
-          ...data,
-          amount: 1.0, // Fixed amount for simplified slot system
-          slotNumber: 1, // Always use slot 1 for simplified slot system
-        }),
+      const res = await apiRequest('POST', '/api/predictions', {
+        ...data,
+        amount: 1.0,
+        slotNumber: 1,
       });
-
-      if (!response.ok) {
-        const error = await response.json();
-        console.error('Prediction creation failed:', error);
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: 'Failed to create prediction' }));
         throw new Error(error.error || 'Failed to create prediction');
       }
-      
-      const result = await response.json();
-      console.log('Prediction created successfully:', result);
-      return result;
+      return res.json();
     },
     onSuccess: () => {
       console.log('Prediction creation succeeded');

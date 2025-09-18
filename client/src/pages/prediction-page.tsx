@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Clock } from 'lucide-react';
 import AppHeader from '@/components/app-header';
 import { EnhancedPredictionForm } from '@/components/enhanced-prediction-form';
 import AnalystConsensusCard from '@/components/analyst-consensus-card';
@@ -14,7 +13,6 @@ import { API_ENDPOINTS } from "@/lib/api-config";
 export default function PredictionPage() {
   const [, params] = useRoute('/predict/:assetSymbol');
   const assetSymbol = params?.assetSymbol;
-  const [selectedDuration, setSelectedDuration] = useState<string>('short');
 
   const { data: asset, isLoading: isLoadingAsset } = useQuery({
     queryKey: ['asset', assetSymbol],
@@ -27,20 +25,6 @@ export default function PredictionPage() {
   });
 
 
-  const getDurationOptions = () => [
-    { 
-      value: 'short', 
-      label: 'Short Term'
-    },
-    { 
-      value: 'medium', 
-      label: 'Medium Term'
-    },
-    { 
-      value: 'long', 
-      label: 'Long Term'
-    },
-  ];
 
   if (isLoadingAsset) {
     return (
@@ -100,29 +84,6 @@ export default function PredictionPage() {
           <AnalystConsensusCard assetSymbol={assetSymbol || ''} />
         </div>
 
-        {/* Duration Selection */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-center space-x-2">
-              <Clock className="h-5 w-5" />
-              <span>Select Duration</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
-              {getDurationOptions().map((duration) => (
-                <Button
-                  key={duration.value}
-                  variant={selectedDuration === duration.value ? "default" : "outline"}
-                  onClick={() => setSelectedDuration(duration.value)}
-                  className="flex flex-col h-auto py-4 px-3 text-xs min-h-[80px] justify-center"
-                >
-                  <span className="font-medium text-sm">{duration.label}</span>
-                </Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Prediction Form */}
         <EnhancedPredictionForm
